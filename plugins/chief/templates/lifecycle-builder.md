@@ -9,7 +9,7 @@
 - [ ] landing path chosen - PR opened (chief-pr-open.sh)
 - [ ] PR approved (chief-pr-approve.sh)
 - [ ] merged (chief-pr-merge.sh)
-- [ ] torn down (chief-teardown.sh); this also discards its reviewer, so the go-ahead names both
+- [ ] torn down (chief-teardown.sh); this also discards its reviewers, so the go-ahead names them all
 
 ## Conditional (mark N/A if it never applied)
 - [ ] review findings posted to the PR, only when the operator asked (chief-pr-review.sh)

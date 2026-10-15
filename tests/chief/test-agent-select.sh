@@ -177,6 +177,26 @@ copilot
 EOF2
 chief_agent_select builder peek; assert_eq "$(chief_agent_describe)" "weighted pool: claude:opus (3), codex (1) (global fallback)" "peek: a weighted pool is listed with its weights, not picked"
 chief_agent_select reviewer peek; assert_eq "$(chief_agent_describe)" "weighted pool: copilot (1)" "describe: a role's own pool has no marker (strategy inherited)"
+cfg <<'EOF2'
+[reviewer]
+strategy = all
+copilot
+claude:sonnet
+claude:sonnet args="--verbose"
+EOF2
+assert_eq "$(chief_agent_fanout reviewer | paste -sd' ' -)" "copilot claude-sonnet claude-sonnet" "all: one slug per entry"
+assert_eq "$(CHIEF_AGENT_PICK=2 pick reviewer)" "claude:sonnet|" "all: CHIEF_AGENT_PICK picks that entry"
+chief_agent_select reviewer; assert_eq "$SEL_AGENT" "copilot" "all: the first entry without a pick"
+CHIEF_AGENT_PICK=3 chief_agent_select reviewer; assert_eq "$SEL_ARGS" "--verbose" "all: a pick carries the entry's args"
+assert_contains "$(CHIEF_AGENT_PICK=9 chief_agent_select reviewer 2>&1)" "no pool entry 9" "all: a pick past the pool errors"
+chief_agent_select reviewer peek; assert_eq "$(chief_agent_describe)" "all pool: copilot, claude:sonnet, claude:sonnet" "peek: an all pool is listed"
+assert_eq "$(chief_agent_fanout builder)" "" "all: other roles run a single worker"
+cfg <<'EOF2'
+[builder]
+strategy = all
+claude
+EOF2
+assert_contains "$(chief_agent_select builder 2>&1)" "only for the reviewer role" "all: refused outside the reviewer role"
 cfg <<< "# no pool"
 chief_agent_select builder peek; assert_eq "$(chief_agent_describe)" "claude (no pool configured)" "describe: no pool marks the claude default"
 

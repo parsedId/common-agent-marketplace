@@ -72,7 +72,8 @@ chief_agent_release() {  # <id> <dir> - agent_release with the task's adapter
 # --- selection -------------------------------------------------------------
 #
 # .chief/config/agents (no file: claude):
-#   strategy = first | round-robin | random | weighted        (default first)
+#   strategy = first | round-robin | random | weighted | all  (default first)
+#                         all (reviewer only): every entry runs, one reviewer each
 #   <agent>[:<model>] [weight=N] [args="<extra CLI args>"] [command="<launch command>"]
 #   [builder] [researcher] [reviewer] [brainstormer]
 #                         a pool (and strategy) for that role only; each falls
@@ -81,8 +82,10 @@ chief_agent_release() {  # <id> <dir> - agent_release with the task's adapter
 # chief_agent_select <role> [peek] sets SEL_AGENT, SEL_MODEL, SEL_ARGS,
 # SEL_COMMAND and POOL_SRC (the role, global, or default when no pool is
 # configured). weighted and random draw from $CHIEF_AGENT_RANDOM when it is set
-# (a test hook), else from $RANDOM; random ignores weights. peek advances no
-# cursor and, for weighted and random, picks nothing: it sets SEL_POOL_DESC.
+# (a test hook), else from $RANDOM; random ignores weights. all takes entry
+# number $CHIEF_AGENT_PICK (default 1); chief_agent_fanout lists them. peek
+# advances no cursor and, for weighted, random and all, picks nothing: it sets
+# SEL_POOL_DESC.
 
 CHIEF_ROLES="builder researcher reviewer brainstormer"
 SEP=$'\x1f'
@@ -139,7 +142,7 @@ _chief_agent_read() {
         read -r entry <<< "${line#*=}"
         entry=${entry%%#*}; read -r entry <<< "$entry"
         case "$entry" in
-          first|round-robin|random|weighted) ;;
+          first|round-robin|random|weighted|all) ;;
           *) echo "chief-agent: $file:$n: unknown strategy '$entry'" >&2; return 1 ;;
         esac
         if [ -z "$section" ]; then gstrategy=$entry; elif [ "$section" = "$want" ]; then sstrategy=$entry; fi ;;
@@ -149,6 +152,8 @@ _chief_agent_read() {
     esac
   done < "$file"
   STRATEGY=${sstrategy:-${gstrategy:-first}}
+  [ "$STRATEGY" != all ] || [ "$want" = reviewer ] \
+    || { echo "chief-agent: $file: strategy all is only for the reviewer role" >&2; return 1; }
   POOL=${spool:-$gpool}
   POOL=${POOL%$'\n'}
   if [ -n "$spool" ]; then POOL_SRC=$want; elif [ -n "$gpool" ]; then POOL_SRC=global; fi
@@ -159,13 +164,15 @@ chief_agent_select() {  # <role> [peek]
   SEL_AGENT=claude SEL_MODEL="" SEL_ARGS="" SEL_COMMAND="" SEL_POOL_DESC=""
   _chief_agent_read "$section" || return 1
   [ -n "$POOL" ] || return 0
-  if [ -n "$peek" ] && { [ "$STRATEGY" = random ] || [ "$STRATEGY" = weighted ]; }; then
+  if [ -n "$peek" ] && [ "$STRATEGY" != first ] && [ "$STRATEGY" != round-robin ]; then
     SEL_POOL_DESC="$STRATEGY pool: $(awk -F"$SEP" -v w="$([ "$STRATEGY" = weighted ] && echo 1 || echo 0)" \
       '{ printf "%s%s%s%s", (NR > 1 ? ", " : ""), $1, ($2 != "" ? ":" $2 : ""), (w ? " (" $3 ")" : "") }' <<< "$POOL")"
     return 0
   fi
   case "$STRATEGY" in
     first) rec=$(head -n 1 <<< "$POOL") ;;
+    all) rec=$(sed -n "${CHIEF_AGENT_PICK:-1}p" <<< "$POOL")
+         [ -n "$rec" ] || { echo "chief-agent: no pool entry ${CHIEF_AGENT_PICK:-1}" >&2; return 1; } ;;
     round-robin)
       chief_lock_acquire "$STATE/.agent-select.lock" 10 || { echo "chief-agent: selection lock busy" >&2; return 1; }
       cursor=$(cat "$STATE/agent-cursor-$section" 2>/dev/null || true)
@@ -182,6 +189,12 @@ chief_agent_select() {  # <role> [peek]
         || { echo "chief-agent: every weight in the pool is 0" >&2; return 1; } ;;
   esac
   IFS=$SEP read -r SEL_AGENT SEL_MODEL _ SEL_COMMAND SEL_ARGS <<< "$rec"
+}
+
+chief_agent_fanout() {  # <role> - one slug (agent[-model]) per reviewer to run: the pool under all, else a single empty line
+  _chief_agent_read "$1" || return 1
+  if [ "$STRATEGY" != all ] || [ -z "$POOL" ]; then echo ""; return 0; fi
+  awk -F"$SEP" '{ s = tolower($1 ($2 != "" ? "-" $2 : "")); gsub(/[^a-z0-9]+/, "-", s); print s }' <<< "$POOL"
 }
 
 chief_agent_note() {  # after chief_agent_select - the marker for a pool that is not the role's own

@@ -48,16 +48,16 @@ Don't launch a researcher for ordinary ambiguity; ask one concise question inste
 Never automatic. Propose each step; the operator decides.
 
 1. Builder `done`: report the result with the diffstat and a one-line recommendation (e.g. "2 files, docs only: review probably unnecessary"), hold it (`${CLAUDE_PLUGIN_ROOT}/bin/chief-backlog.sh hold <id> "reported: awaiting review decision"`), and ask whether to review it. Batch the question when several builders finish together.
-2. No: go to landing. Yes: `${CLAUDE_PLUGIN_ROOT}/bin/task/chief-review.sh <builder-id>`. Round 1 spawns the reviewer `<builder-id>-review`; later rounds re-arm it. Run it in the background. The watcher wakes you when the reviewer reports.
+2. No: go to landing. Yes: `${CLAUDE_PLUGIN_ROOT}/bin/task/chief-review.sh <builder-id>`. Round 1 spawns the reviewer `<builder-id>-review` (with `strategy = all` in the `[reviewer]` pool: one `<builder-id>-review-<agent>` per entry); later rounds re-arm them all. Run it in the background. The watcher wakes you when the reviewer reports.
    If the operator says "review everything this session", skip the question for this conversation until they revoke it. Still present every verdict.
-3. Reviewer `done`: present the verdict (PASS, or the blocking findings, then the suggestions) from `.chief/data/<reviewer-id>/report.md`. Hold the reviewer (`chief-backlog.sh hold <reviewer-id> "round N <verdict>, idle"`) and propose the next step:
+3. Reviewer `done` (with several, wait for all, then present each separately and name the agent): present the verdict (PASS, or the blocking findings, then the suggestions) from `.chief/data/<reviewer-id>/report.md`. Hold the reviewer (`chief-backlog.sh hold <reviewer-id> "round N <verdict>, idle"`) and propose the next step:
    - FAIL: offer to send the findings to the builder. The operator may add comments or drop findings first.
    - PASS: offer to land it or keep going.
    - Reviewer `failed`: the review did not complete; report why.
 4. Operator approves sending: `${CLAUDE_PLUGIN_ROOT}/bin/task/chief-send.sh <builder-id> "<blocking findings, the operator's additions, the report path>"`, then `chief-backlog.sh status <builder-id> in-flight`.
 5. Builder `done` again: say it was fixed in `<sha7>` and ask again (step 1). There is no round cap.
 6. Suggest posting findings to the PR only when the operator asks. Then run `${CLAUDE_PLUGIN_ROOT}/bin/pr/chief-pr-review.sh <builder-id> --comment "<finding>" --file <path> --line <N>` per finding, then a closing `--comment` or `--request-changes`.
-7. `chief-teardown.sh <builder-id>` also discards its reviewer: name both in the go-ahead. A reviewer alone: `chief-teardown.sh <reviewer-id>`, on the go-ahead.
+7. `chief-teardown.sh <builder-id>` also discards its reviewers: name them all in the go-ahead. A reviewer alone: `chief-teardown.sh <reviewer-id>`, on the go-ahead.
 
 ## After the operator responds
 
@@ -97,7 +97,7 @@ A done researcher or brainstormer with a report can be followed by a successor: 
 - **Approve it** - `${CLAUDE_PLUGIN_ROOT}/bin/pr/chief-pr-approve.sh <id>`.
 - **Merge it** - `${CLAUDE_PLUGIN_ROOT}/bin/pr/chief-pr-merge.sh <id> --confirm`. Squashes by default; pass `--merge` or `--rebase` only if the operator asks.
 - **Abandon** - `${CLAUDE_PLUGIN_ROOT}/bin/task/chief-control.sh <id> exit` stops the worker and keeps its worktree and commits. `${CLAUDE_PLUGIN_ROOT}/bin/chief-teardown.sh <id> --abandon` also discards the unlanded work; only on the operator's explicit instruction.
-- **Landed** - `${CLAUDE_PLUGIN_ROOT}/bin/chief-backlog.sh done <id>` (if not already), then `${CLAUDE_PLUGIN_ROOT}/bin/chief-teardown.sh <id>`. Teardown refuses unless the branch is reachable from the default branch (or `--abandon`); it also discards the builder's reviewer.
+- **Landed** - `${CLAUDE_PLUGIN_ROOT}/bin/chief-backlog.sh done <id>` (if not already), then `${CLAUDE_PLUGIN_ROOT}/bin/chief-teardown.sh <id>`. Teardown refuses unless the branch is reachable from the default branch (or `--abandon`); it also discards the builder's reviewers.
 
 ## Backlog reference
 
