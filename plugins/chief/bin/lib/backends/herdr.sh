@@ -44,6 +44,20 @@ CHIEF_HERDR_START_WAIT="${CHIEF_HERDR_START_WAIT:-60}"
 CHIEF_HERDR_SUBMIT_TIMEOUT_MS="${CHIEF_HERDR_SUBMIT_TIMEOUT_MS:-30000}"
 CHIEF_HERDR_PROMPT_WAIT="${CHIEF_HERDR_PROMPT_WAIT:-20}"
 
+# _chief_herdr_name <id> -> the herdr agent name. herdr accepts only
+# ^[a-z][a-z0-9_-]{0,31}$: a valid id is used as is, any other becomes a
+# sanitized prefix plus an 8-hex hash of the id (deterministic, unique per id).
+_chief_herdr_name() {
+  local id=$1 hash base
+  if [[ $id =~ ^[a-z][a-z0-9_-]{0,31}$ ]]; then
+    printf '%s' "$id"
+    return
+  fi
+  hash=$(printf '%s' "$id" | cksum | awk '{ printf "%08x", $1 }')
+  base=$(printf '%s' "$id" | tr 'A-Z' 'a-z' | tr -c 'a-z0-9_\n-' '-' | sed 's/^[^a-z]*//' | cut -c1-23)
+  printf '%s-%s' "${base:-t}" "$hash"
+}
+
 _chief_herdr_workspace_id() {  # <pane-id> -> workspace id ("w2:p1" -> "w2")
   printf '%s' "$1" | cut -d: -f1
 }
@@ -65,7 +79,7 @@ _chief_herdr_close_task_workspace() {
 }
 
 _chief_herdr_screen() {  # <id> [source] -> the agent's screen
-  herdr agent read "$1" --source "${2:-recent-unwrapped}" --lines 40 2>/dev/null
+  herdr agent read "$(_chief_herdr_name "$1")" --source "${2:-recent-unwrapped}" --lines 40 2>/dev/null
 }
 
 # _chief_herdr_trust_dialog_ours <screen> <worktree> - the screen shows the
@@ -92,7 +106,7 @@ _chief_herdr_start_agent() {
   cmd=$(chief_agent_command)
   [[ $cmd != *' '* ]] || args=${cmd#* }  # herdr runs the agent's own executable: pass the words after the first
   # agent_pane_busy: the pane's shell isn't up yet (slow host); nothing started, so retry
-  until out=$(herdr agent start "$id" --kind "$(agent_name)" --pane "$pane_id" --timeout 30000 \
+  until out=$(herdr agent start "$(_chief_herdr_name "$id")" --kind "$(agent_name)" --pane "$pane_id" --timeout 30000 \
                 -- $args 2>&1) || [[ $out == *agent_not_ready* ]]; do
     [[ $out == *agent_pane_busy* ]] && [ "$waited" -lt "$limit" ] || {
       echo "chief-backend-herdr: 'herdr agent start' failed for $id: $out" >&2
@@ -107,7 +121,7 @@ _chief_herdr_start_agent() {
     printf '%s' "$screen" | grep -Eq -- "$(agent_ready_text)" && return 0
     keys=$(agent_trust_keys)
     if [ "$pressed" = 0 ] && [ -n "$keys" ] && _chief_herdr_trust_dialog_ours "$screen" "$worktree"; then
-      herdr agent send-keys "$id" $keys >/dev/null 2>&1
+      herdr agent send-keys "$(_chief_herdr_name "$id")" $keys >/dev/null 2>&1
       pressed=1
     fi
     [ "$waited" -lt "$limit" ] || break
@@ -131,7 +145,7 @@ _chief_herdr_turn_started() {
 # _chief_herdr_submit <id> <text> - submit <text> (herdr's reply in
 # $SUBMIT_REPLY): 0 the turn started, 1 herdr failed, 2 it replied without one
 _chief_herdr_submit() {
-  SUBMIT_REPLY=$(herdr agent prompt "$1" "$2" --wait --until working --until done \
+  SUBMIT_REPLY=$(herdr agent prompt "$(_chief_herdr_name "$1")" "$2" --wait --until working --until done \
                    --timeout "$CHIEF_HERDR_SUBMIT_TIMEOUT_MS" 2>&1) || return 1
   _chief_herdr_turn_started "$SUBMIT_REPLY" || return 2
 }
@@ -151,9 +165,9 @@ _chief_herdr_recover() {
     screen=$(_chief_herdr_screen "$id" detection)
     if printf '%s' "$screen" | chief_agent_has_text "$needle"; then
       if printf '%s\n' "$screen" | chief_agent_input_line | chief_agent_has_text "$needle"; then
-        herdr agent send-keys "$id" enter >/dev/null 2>&1
+        herdr agent send-keys "$(_chief_herdr_name "$id")" enter >/dev/null 2>&1
       fi
-      herdr agent wait "$id" --until working --until done --timeout 15000 >/dev/null 2>&1
+      herdr agent wait "$(_chief_herdr_name "$id")" --until working --until done --timeout 15000 >/dev/null 2>&1
       return
     fi
     if printf '%s' "$screen" | grep -Eq -- "$(agent_ready_text)"; then
@@ -181,7 +195,7 @@ _chief_herdr_prompt() {
   fi
   # A permission/approval prompt nobody is present to answer is not a wedged
   # terminal - `agent get`'s state is `blocked` only for the former.
-  if herdr agent get "$id" 2>/dev/null | jq -e '.result.agent.agent_status == "blocked"' >/dev/null; then
+  if herdr agent get "$(_chief_herdr_name "$id")" 2>/dev/null | jq -e '.result.agent.agent_status == "blocked"' >/dev/null; then
     echo "chief-backend-herdr: prompt for $id stalled at an unanswered permission/approval prompt - no one is present to answer it" >&2
   else
     echo "chief-backend-herdr: no turn started for $id after the prompt" >&2
@@ -226,16 +240,16 @@ backend_spawn_cleanup() {
 backend_send() {
   local id=$1 text=$2
   case "$text" in
-    Enter)  herdr agent send-keys "$id" enter ;;
-    Escape) herdr agent send-keys "$id" esc ;;
-    C-c)    herdr agent send-keys "$id" ctrl+c ;;
-    *)      herdr agent prompt "$id" "$text" ;;
+    Enter)  herdr agent send-keys "$(_chief_herdr_name "$id")" enter ;;
+    Escape) herdr agent send-keys "$(_chief_herdr_name "$id")" esc ;;
+    C-c)    herdr agent send-keys "$(_chief_herdr_name "$id")" ctrl+c ;;
+    *)      herdr agent prompt "$(_chief_herdr_name "$id")" "$text" ;;
   esac >/dev/null
 }
 
 backend_capture() {
   local id=$1
-  herdr agent read "$id" --source recent-unwrapped --lines 200 2>/dev/null
+  herdr agent read "$(_chief_herdr_name "$id")" --source recent-unwrapped --lines 200 2>/dev/null
 }
 
 # The pane id in the endpoint names the workspace; its label is recorded as label=.
@@ -249,7 +263,7 @@ backend_attach_hint() {
 
 backend_busy() {
   local id=$1
-  herdr agent get "$id" 2>/dev/null | jq -e '.result.agent.agent_status == "working"' >/dev/null
+  herdr agent get "$(_chief_herdr_name "$id")" 2>/dev/null | jq -e '.result.agent.agent_status == "working"' >/dev/null
 }
 
 backend_kill() {

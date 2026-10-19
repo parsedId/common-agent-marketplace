@@ -21,7 +21,7 @@ Spawn syncs the project's default branch from origin (best-effort), then creates
 
 ## Naming
 
-Task ids read `<role>-<topic>` (`build-rate-limit`, `research-auth-flow`; a reviewer is `<builder-id>-review`); herdr labels a task's workspace `<id> · <role> · <project>` (recorded as `label=` in meta; earlier tasks keep `chief-<id>`), Orca names the worktree `<id>`. `chief-backlog.sh show <id>` prints a task's workspace, branch, worktree, brief and report paths.
+Task ids read `<role>-<topic>` (`build-rate-limit`, `research-auth-flow`; a reviewer is `<builder-id>-review`); herdr labels a task's workspace `<id> · <role> · <project>` (recorded as `label=` in meta; earlier tasks keep `chief-<id>`), Orca names the worktree `<id>`. herdr agent names must match `^[a-z][a-z0-9_-]{0,31}$`: an id that doesn't is mapped to a shortened name plus a hash inside the herdr adapter, so any id works. The watcher surfaces a terminal state line once per task (`notify-baseline` in meta) and again only when the line changes or the task goes back to work. `chief-backlog.sh show <id>` prints a task's workspace, branch, worktree, brief and report paths.
 
 ## Agents
 

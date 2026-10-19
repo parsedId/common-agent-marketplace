@@ -218,4 +218,16 @@ backend_relaunch r1 "$WORK/brief.md" >/dev/null 2>&1
 assert_eq "$?" "0" "a started turn -> relaunch succeeds"
 assert_eq "$(chief_meta_get r1 endpoint)" "herdr:w9:p1" "...and records the endpoint"
 
+echo "[name] herdr agent names are valid, deterministic and unique"
+LONG1=build-dotnet-common-keycloak-by-name-review-copilot-gpt-6-1-sol
+LONG2=build-dotnet-common-keycloak-by-name-review-copilot-gpt-6-1-sul
+N1=$(_chief_herdr_name "$LONG1"); N2=$(_chief_herdr_name "$LONG2")
+assert_eq "$(_chief_herdr_name t1)" "t1" "a valid short id is used as is"
+assert_success "a long id maps to a valid herdr name" -- grep -Eq '^[a-z][a-z0-9_-]{0,31}$' <<<"$N1"
+assert_eq "$N1" "$(_chief_herdr_name "$LONG1")" "...deterministically"
+assert_eq "$([ "$N1" != "$N2" ] && echo ok)" "ok" "...and ids sharing a prefix stay distinct"
+assert_success "an uppercase/dotted id maps to a valid name" -- grep -Eq '^[a-z][a-z0-9_-]{0,31}$' <<<"$(_chief_herdr_name 9Task.Foo)"
+reset; backend_send "$LONG1" hi
+assert_contains "$(cat "$FAKE/calls")" "agent prompt $N1 <2B>" "backend_send uses the derived name"
+
 harness_summary

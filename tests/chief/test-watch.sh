@@ -47,8 +47,8 @@ OUT1=$(timeout 10 "$BIN/chief-watch.sh")
 assert_contains "$OUT1" "t-1: state: done" "first Stop hook: watch surfaces the newly-done task"
 
 OUT2=$(timeout 10 "$BIN/chief-watch.sh")
-assert_contains "$OUT2" "t-1: state: done" \
-  "second Stop hook (before anything acts on the task): watch still surfaces it - nothing has advanced its meta status yet"
+assert_not_contains "$OUT2" "t-1: state: done" \
+  "second Stop hook (status still in-flight): the already-surfaced done line is not re-fired"
 
 # The normal flow acts on the task: open a PR for it.
 "$BIN/pr/chief-pr-open.sh" t-1 --confirm --title "My title" --body "My body" >/dev/null
@@ -97,8 +97,16 @@ assert_contains "$OUT7" "t-2: state: done · switched to the new approach" \
   "once the state changes, watch surfaces the new terminal state"
 
 OUT8=$(timeout 10 "$BIN/chief-watch.sh")
-assert_contains "$OUT8" "t-2: state: done · switched to the new approach" \
-  "and keeps re-surfacing that new state on every subsequent Stop hook, same as the general case"
+assert_not_contains "$OUT8" "t-2: state: done · switched to the new approach" \
+  "but surfaces that new state only once"
+
+# Re-armed (back to work), then the identical line again: surfaces again.
+echo "working: round 2" >> "$CHIEF_HOME/state/t-2.status"
+touch "$CHIEF_HOME/state/t-2.turn-ended"
+CHIEF_POLL=1 timeout 3 "$BIN/chief-watch.sh" >/dev/null
+echo "done: switched to the new approach" >> "$CHIEF_HOME/state/t-2.status"
+assert_contains "$(timeout 10 "$BIN/chief-watch.sh")" "t-2: state: done · switched to the new approach" \
+  "after a working phase, an identical terminal line surfaces again"
 
 # --- brainstormer: an operator-wait never wakes Chief; done does ---
 "$BIN/chief-backlog.sh" hold t-2 "reported" >/dev/null
