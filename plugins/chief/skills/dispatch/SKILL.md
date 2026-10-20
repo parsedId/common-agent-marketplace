@@ -111,3 +111,4 @@ A done researcher or brainstormer with a report can be followed by a successor: 
 - Deleting the source branch when merging a PR on the operator's go-ahead is expected; teardown and abandon never delete a remote branch (e.g. opening a PR, then tearing down before it merges).
 - Don't spawn a worker to answer something a quick read-only look settles. Any actual change to a project, however small, goes to a worker.
 - Don't invent scope in `--spec` beyond what `--intent` asks for.
+- Don't leave the session's working directory inside a project or task worktree: stay at the Chief home and use `git -C <path>` or `( cd <path> && ... )`. The Stop hook judges worker sessions by the launch directory (`CLAUDE_PROJECT_DIR`), but a primary session started inside a linked worktree still does not arm the watcher.
