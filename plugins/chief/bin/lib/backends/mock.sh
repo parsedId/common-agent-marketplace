@@ -5,11 +5,11 @@
 # harmless placeholder background process instead, so the rest of Chief's
 # scripts (spawn/control/crew-state/watch/teardown) can be exercised end to
 # end without herdr, Orca, or spending real model tokens. A test then plays
-# the builder's role by hand-writing state/<id>.status and
-# state/<id>.turn-ended, exactly as a real brief instructs a real agent to.
+# the builder's role by hand-writing tasks/<id>/status and
+# tasks/<id>/turn-ended, exactly as a real brief instructs a real agent to.
 #
-# "Terminal" here is one log file (state/<id>.term.log) plus one long-lived
-# placeholder process whose pid is recorded in state/<id>.term.pid.
+# "Terminal" here is one log file (tasks/<id>/term.log) plus one long-lived
+# placeholder process whose pid is recorded in tasks/<id>/term.pid.
 #
 # $CHIEF_MOCK_PID_LOG, if set, is a file every placeholder pid is appended to,
 # so a test harness can reap exactly the workers it started.
@@ -27,7 +27,7 @@ backend_spawn() {
   chief_agent_use "$id" || return 1
   agent_prepare "$worktree"
   git -C "$project_dir" worktree add -q -b "$branch" "$worktree" >/dev/null
-  local log="$STATE/$id.term.log"
+  local log="$(chief_task_path "$id" term.log)"
   : > "$log"
   {
     echo "[mock] launched for $id"
@@ -41,7 +41,7 @@ backend_spawn() {
   # exits - i.e. until sleep's 100000 seconds are up.
   ( exec -a "chief-mock-$id" sleep 100000 ) >/dev/null 2>&1 &
   disown
-  echo $! > "$STATE/$id.term.pid"
+  echo $! > "$(chief_task_path "$id" term.pid)"
   [ -z "${CHIEF_MOCK_PID_LOG:-}" ] || echo $! >> "$CHIEF_MOCK_PID_LOG"
   if [ "${CHIEF_MOCK_SPAWN_FAIL:-0}" = "1" ]; then
     echo "[mock] simulated backend_spawn failure for $id" >&2
@@ -61,43 +61,38 @@ backend_spawn_cleanup() {
   local worktree="$WORKTREES/$id"
   local pid
   chief_agent_release "$id" "$worktree"
-  pid=$(cat "$STATE/$id.term.pid" 2>/dev/null) || true
+  pid=$(cat "$(chief_task_path "$id" term.pid)" 2>/dev/null) || true
   [ -n "${pid:-}" ] && kill "$pid" 2>/dev/null
-  rm -f "$STATE/$id.term.pid" "$STATE/$id.term.log"
+  rm -f "$(chief_task_path "$id" term.pid)" "$(chief_task_path "$id" term.log)"
   git -C "$project_dir" worktree remove --force "$worktree" >/dev/null 2>&1 || rm -rf "$worktree"
   git -C "$project_dir" branch -D "$branch" >/dev/null 2>&1 || true
 }
 
 backend_send() {
   local id=$1 text=$2
-  echo "[mock] send: $text" >> "$STATE/$id.term.log"
-}
-
-backend_capture() {
-  local id=$1
-  cat "$STATE/$id.term.log" 2>/dev/null
+  echo "[mock] send: $text" >> "$(chief_task_path "$id" term.log)"
 }
 
 backend_busy() {
   local id=$1
   local pid
-  pid=$(cat "$STATE/$id.term.pid" 2>/dev/null) || return 1
+  pid=$(cat "$(chief_task_path "$id" term.pid)" 2>/dev/null) || return 1
   kill -0 "$pid" 2>/dev/null
 }
 
 backend_attach_hint() {
-  printf "tail -f '%s'\n" "$STATE/$1.term.log"
+  printf "tail -f '%s'\n" "$(chief_task_path "$1" term.log)"
 }
 
 backend_relaunch() {
   local id=$1 brief_path=$2
   chief_agent_use "$id" || return 1
   agent_prepare "$(chief_meta_get "$id" worktree)"
-  echo "[mock] relaunch for $id" >> "$STATE/$id.term.log"
-  echo "[mock] brief: $brief_path" >> "$STATE/$id.term.log"
+  echo "[mock] relaunch for $id" >> "$(chief_task_path "$id" term.log)"
+  echo "[mock] brief: $brief_path" >> "$(chief_task_path "$id" term.log)"
   ( exec -a "chief-mock-$id" sleep 100000 ) >/dev/null 2>&1 &
   disown
-  echo $! > "$STATE/$id.term.pid"
+  echo $! > "$(chief_task_path "$id" term.pid)"
   [ -z "${CHIEF_MOCK_PID_LOG:-}" ] || echo $! >> "$CHIEF_MOCK_PID_LOG"
 }
 
@@ -108,7 +103,7 @@ backend_teardown() {
 backend_kill() {
   local id=$1
   local pid
-  pid=$(cat "$STATE/$id.term.pid" 2>/dev/null) || return 0
+  pid=$(cat "$(chief_task_path "$id" term.pid)" 2>/dev/null) || return 0
   kill "$pid" 2>/dev/null || true
-  rm -f "$STATE/$id.term.pid" "$STATE/$id.term.log"
+  rm -f "$(chief_task_path "$id" term.pid)" "$(chief_task_path "$id" term.log)"
 }

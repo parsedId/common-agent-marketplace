@@ -10,12 +10,14 @@ WORK=$(mktemp -d)
 harness_trap 'rm -rf "$WORK"'
 export CHIEF_HOME="$WORK/.chief"
 . "$LIB/paths.sh"
+chief_ensure_dirs
 . "$LIB/meta.sh"
 . "$LIB/agents/agent.sh"
 
 echo "test-agent:"
 
-assert_eq "$(chief_agent_use none >/dev/null 2>&1; agent_name)" "claude" "use: a task without meta runs claude"
+chief_agent_use none >/dev/null 2>&1 && rc=0 || rc=$?
+assert_eq "$rc" "1" "use: a task with no recorded agent is refused"
 
 chief_meta_set t1 agent claude
 chief_meta_set t1 model opus

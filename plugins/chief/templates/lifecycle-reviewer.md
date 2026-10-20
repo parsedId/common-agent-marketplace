@@ -10,5 +10,5 @@ Started by chief-review.sh for a builder's commit, or by hand for any branch. Ne
 - [ ] torn down with its builder (chief-teardown.sh <builder>), or alone (chief-teardown.sh <id>)
 
 ## Conditional (mark N/A if it never applied)
-- [ ] findings posted to the PR, only when the operator asked (chief-pr-review.sh)
+- [ ] findings posted to the PR, only when the operator asked (host CLI)
 - [ ] escalated (chief-control.sh interrupt/relaunch)

@@ -6,6 +6,7 @@
 set -euo pipefail
 
 . "$(dirname "${BASH_SOURCE[0]}")/lib/paths.sh"
+chief_ensure_dirs
 
 fail() { echo "chief-setup: $*" >&2; exit 1; }
 

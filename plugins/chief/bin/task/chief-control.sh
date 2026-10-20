@@ -44,7 +44,7 @@ case "$VERB" in
     done
     [ -n "$NOTE" ] || fail "relaunch requires --note \"<progress so far>\" - the replacement gets the worktree but not the conversation"
 
-    BRIEF="$DATA/$ID/brief.md"
+    BRIEF=$(chief_task_path "$ID" brief.md)
     [ -f "$BRIEF" ] || fail "no brief found at $BRIEF"
 
     # Only the latest checkpoint carries forward: the new agent inherits the

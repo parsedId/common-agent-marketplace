@@ -7,7 +7,7 @@
 set -euo pipefail
 
 . "$(dirname "${BASH_SOURCE[0]}")/lib/paths.sh"
-. "$CHIEF_ROOT/bin/lib/meta.sh"
+chief_ensure_dirs
 . "$CHIEF_ROOT/bin/lib/agents/agent.sh"
 
 for role in $CHIEF_ROLES; do

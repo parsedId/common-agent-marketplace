@@ -16,16 +16,15 @@
 #   backend_send    <id> <text-or-special-key>
 #                     -> best-effort delivers text (or "Enter"/"Escape"/"C-c")
 #                        to that task's terminal.
-#   backend_capture <id> -> prints the terminal's current visible output.
 #   backend_busy    <id> -> exit 0 if the terminal looks actively working,
-#                           exit 1 if idle/settled. Best-effort; chief-watch.sh
-#                           treats state/<id>.turn-ended as the authoritative
+#                           exit 1 if idle/settled. Best-effort;
+#                           chief-crew-state.sh treats tasks/<id>/turn-ended as the authoritative
 #                           signal and this as a fallback only.
 #   backend_kill    <id> -> tears down the terminal/session. Never touches
 #                           the worktree or its git history.
 #   backend_relaunch <id> <brief-path>
 #                     -> launches a fresh agent in the EXISTING worktree
-#                        (recorded in state/<id>.meta) pointed at the given
+#                        (recorded in tasks/<id>/meta) pointed at the given
 #                        brief, after backend_kill already stopped the old
 #                        one. Does not create a new worktree or branch.
 #                        Returns 0 only once the first turn is observed started.
@@ -82,7 +81,7 @@ esac
 . "$CHIEF_ROOT/bin/lib/agents/agent.sh"
 . "$CHIEF_ROOT/bin/lib/backends/$CHIEF_BACKEND.sh"
 
-for _fn in backend_spawn backend_send backend_capture backend_busy backend_kill backend_relaunch backend_teardown; do
+for _fn in backend_spawn backend_send backend_busy backend_kill backend_relaunch backend_teardown; do
   declare -F "$_fn" >/dev/null || { echo "chief-backend: '$CHIEF_BACKEND' does not define $_fn" >&2; exit 1; }
 done
 unset _fn

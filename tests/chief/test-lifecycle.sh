@@ -28,9 +28,9 @@ assert_success "spawn: creates the worktree and launches the mock backend" -- \
 
 assert_contains "$("$BIN/chief-backlog.sh" show t-1)" "[in-flight]" "spawn: marks the backlog item in-flight"
 assert_file_exists "$CHIEF_HOME/worktrees/t-1" "spawn: worktree exists"
-assert_file_exists "$CHIEF_HOME/data/t-1/brief.md" "spawn: brief exists"
-assert_contains "$(cat "$CHIEF_HOME/data/t-1/brief.md")" "Add hello.txt" "spawn: intent is rendered into the brief"
-assert_contains "$(cat "$CHIEF_HOME/data/t-1/brief.md")" "report \`working" "spawn: the builder brief tells it to re-announce working after resuming from a terminal status"
+assert_file_exists "$CHIEF_HOME/tasks/t-1/brief.md" "spawn: brief exists"
+assert_contains "$(cat "$CHIEF_HOME/tasks/t-1/brief.md")" "Add hello.txt" "spawn: intent is rendered into the brief"
+assert_contains "$(cat "$CHIEF_HOME/tasks/t-1/brief.md")" "report \`working" "spawn: the builder brief tells it to re-announce working after resuming from a terminal status"
 
 # Simulate the builder actually doing its job - a real commit in its worktree.
 (
@@ -39,7 +39,7 @@ assert_contains "$(cat "$CHIEF_HOME/data/t-1/brief.md")" "report \`working" "spa
   git add hello.txt
   git -c user.email=t@t -c user.name=t commit -q -m "add hello.txt"
 )
-echo "done: added hello.txt" >> "$CHIEF_HOME/state/t-1.status"
+echo "done: added hello.txt" >> "$CHIEF_HOME/tasks/t-1/status"
 
 assert_contains "$("$BIN/task/chief-crew-state.sh" t-1)" "state: done" "crew-state: reports done once the builder reports it"
 

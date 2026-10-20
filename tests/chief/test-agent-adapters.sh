@@ -10,6 +10,7 @@ WORK=$(mktemp -d)
 harness_trap 'rm -rf "$WORK"'
 export CHIEF_HOME="$WORK/.chief"
 . "$LIB/paths.sh"
+chief_ensure_dirs
 . "$LIB/meta.sh"
 . "$LIB/agents/agent.sh"
 
@@ -44,6 +45,7 @@ done
 chief_agent_use n-copilot
 assert_success "copilot: ready text matches the 1.0.97 footer" -- bash -c "echo 'Interactive · Allow All' | grep -Eq '$(agent_ready_text)'"
 assert_success "copilot: ready text still matches the old texts" -- bash -c "echo 'for commands' | grep -Eq '$(agent_ready_text)' && echo 'for shortcuts' | grep -Eq '$(agent_ready_text)'"
+assert_success "copilot: paste text matches the 1.0.95 placeholder" -- bash -c "echo '❯ [Paste #1 - 20 lines]' | grep -Eq '$(agent_paste_text)'"
 
 # herdr starts the task's own kind with its args (and a command override's args).
 mkdir "$WORK/bin"

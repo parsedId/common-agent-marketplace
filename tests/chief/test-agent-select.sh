@@ -10,6 +10,7 @@ WORK=$(mktemp -d)
 harness_trap 'rm -rf "$WORK"'
 export CHIEF_HOME="$WORK/.chief"
 . "$LIB/paths.sh"
+chief_ensure_dirs
 . "$LIB/agents/agent.sh"
 CFG="$CONFIG/agents"
 

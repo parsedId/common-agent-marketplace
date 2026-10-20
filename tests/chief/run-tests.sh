@@ -4,10 +4,11 @@
 # These are functional/integration tests of Chief's own bash scripts. Most
 # run against the `mock` backend (no `claude` CLI, zero tokens).
 # test-backend-orca-mock.sh is also zero-cost - it unit-tests
-# backends/orca.sh against a fake `orca` CLI. test-backend-herdr.sh and
-# test-backend-orca.sh are the exceptions: each opts into a real
-# herdr/orca install and a real claude turn, skipped by default - see this
-# directory's README.md. Skill-BEHAVIOR tests (does Claude actually follow
+# backends/orca.sh against a fake `orca` CLI. test-backend-herdr.sh,
+# test-backend-orca.sh, test-backend-copilot.sh and
+# test-backend-copilot-brief.sh are the exceptions: each
+# opts into a real herdr/orca install and a real agent turn, skipped by
+# default - see this directory's README.md. Skill-BEHAVIOR tests (does Claude actually follow
 # using-chief/dispatch/setup correctly) live in tests/claude-code/
 # instead.
 set -uo pipefail

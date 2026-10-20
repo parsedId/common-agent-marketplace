@@ -13,6 +13,7 @@ SETUP="$BIN/chief-setup.sh"
 
 echo "test-setup:"
 
+export CHIEF_HOME="$WORK/refused/.chief"
 assert_failure "refuses with no --backend" -- "$SETUP"
 assert_failure "refuses an invalid backend name" -- "$SETUP" --backend bogus
 

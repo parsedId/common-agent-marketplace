@@ -18,7 +18,7 @@
 # Backends run chief_agent_command: the task's command= if set, else agent_command.
 #
 # A task's agent, model, args and command come from its meta (chief-spawn.sh
-# records them); a task without them runs claude.
+# records them).
 
 . "$CHIEF_ROOT/bin/lib/lock.sh"
 
@@ -44,7 +44,7 @@ chief_agent_use() {  # <id> - loads the adapter recorded in the task's meta
   CHIEF_AGENT_MODEL=$(chief_meta_get "$1" model 2>/dev/null) || CHIEF_AGENT_MODEL=""
   CHIEF_AGENT_ARGS=$(chief_meta_get "$1" args 2>/dev/null) || CHIEF_AGENT_ARGS=""
   CHIEF_AGENT_COMMAND=$(chief_meta_get "$1" command 2>/dev/null) || CHIEF_AGENT_COMMAND=""
-  chief_agent_load "${agent:-claude}"
+  chief_agent_load "$agent"
 }
 
 chief_agent_command() { echo "${CHIEF_AGENT_COMMAND:-$(agent_command)}"; }
