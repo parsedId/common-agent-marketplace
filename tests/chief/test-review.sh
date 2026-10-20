@@ -167,6 +167,37 @@ commit $LB long2.txt >/dev/null
 echo "done: $(git -C "$CHIEF_HOME/worktrees/$LB" rev-parse --short HEAD) ok" >> "$TASKS/$LB/status"
 assert_contains "$("$RV" $LB 2>&1)" "review: build-keycloak-name-extra-rv round 2 of $LB" "long id: round 2 reads reviewer= from meta"
 
+# --- strategy all: one reviewer per [reviewer] entry ---
+mkdir -p "$CHIEF_HOME/config"
+printf '[reviewer]\nstrategy = all\nclaude:sonnet\ncodex\nclaude:sonnet\n' > "$CHIEF_HOME/config/agents"
+"$BIN/chief-backlog.sh" add b-4 "Add four" >/dev/null
+timeout 10 "$BIN/chief-spawn.sh" b-4 "$WORK/project" --mode builder --branch feat/b-4 --intent "Add four" >/dev/null
+commit b-4 four.txt >/dev/null
+echo "done: $(git -C "$CHIEF_HOME/worktrees/b-4" rev-parse --short HEAD) ok" >> "$TASKS/b-4/status"
+out=$(timeout 30 "$RV" b-4 2>&1)
+assert_contains "$out" "review: b-4-rv-claude-sonnet, b-4-rv-codex, b-4-rv-claude-sonnet-2 round 1 of b-4" "all: one reviewer per entry, ids distinct"
+assert_eq "$(chief_meta_get b-4 reviewer)" "b-4-rv-claude-sonnet b-4-rv-codex b-4-rv-claude-sonnet-2" "all: the builder links every reviewer"
+assert_eq "$(chief_meta_get b-4-rv-codex agent)" "codex" "all: each reviewer runs its own entry"
+assert_eq "$(chief_meta_get b-4-rv-codex for)" "b-4" "all: each reviewer is for the builder"
+assert_eq "$(chief_meta_get b-4-rv-codex branch)" "chore/b-4-rv-codex" "all: distinct branches"
+assert_contains "$("$CS" b-4)" "[reviewer: b-4-rv-claude-sonnet b-4-rv-codex b-4-rv-claude-sonnet-2]" "all: crew-state lists the reviewers"
+assert_contains "$("$RV" b-4 2>&1)" "already reviewing" "all: a working reviewer refuses the same SHA"
+for r in $(chief_meta_get b-4 reviewer); do
+  printf 'Verdict: PASS\n' > "$TASKS/$r/report.md"
+  echo "done: round 1 PASS @x" >> "$TASKS/$r/status"
+done
+SHA4=$(commit b-4 four-b.txt)
+echo "done: ${SHA4:0:7} fixed" >> "$TASKS/b-4/status"
+out=$(timeout 30 "$RV" b-4 2>&1)
+assert_contains "$out" "round 2 of b-4" "all: round 2 re-arms them all"
+for r in $(chief_meta_get b-4 reviewer); do
+  assert_file_exists "$TASKS/$r/report.round-1.md" "all: $r report archived"
+  assert_contains "$(cat "$TASKS/$r/inbox/001.msg")" "Pinned SHA: $SHA4" "all: $r got the round message"
+done
+out=$("$BIN/chief-teardown.sh" b-4 --abandon 2>&1)
+assert_eq "$(grep -c '^torn down' <<< "$out")" "4" "all: teardown discards the builder and every reviewer"
+rm "$CHIEF_HOME/config/agents"
+
 # --- manual use on an arbitrary branch ---
 git -C "$WORK/project" branch feat/other main
 assert_success "manual: chief-spawn --mode reviewer --spec" -- \
@@ -211,7 +242,7 @@ BL=$(cat "$TEMPLATES/lifecycle-builder.md")
 assert_contains "$BL" "chief-review.sh <id>" "builder lifecycle: names the review helper"
 assert_contains "$BL" "every time (never automatic)" "builder lifecycle: the review question is always asked"
 assert_contains "$BL" "review everything this session" "builder lifecycle: the standing preference"
-assert_contains "$BL" "also discards its reviewer" "builder lifecycle: the teardown cascade"
+assert_contains "$BL" "also discards its reviewers" "builder lifecycle: the teardown cascade"
 DS=$(cat "$REPO_ROOT/plugins/chief/skills/dispatch/SKILL.md")
 assert_contains "$DS" "## The review loop" "dispatch: has the review loop"
 assert_contains "$DS" "chief-review.sh <builder-id>" "dispatch: runs the helper"
