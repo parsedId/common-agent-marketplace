@@ -48,16 +48,16 @@ Don't launch a researcher for ordinary ambiguity; ask one concise question inste
 Never automatic. Propose each step; the operator decides.
 
 1. Builder `done`: report the result with the diffstat and a one-line recommendation (e.g. "2 files, docs only: review probably unnecessary"), hold it (`${CLAUDE_PLUGIN_ROOT}/bin/chief-backlog.sh hold <id> "reported: awaiting review decision"`), and ask whether to review it. Batch the question when several builders finish together.
-2. No: go to landing. Yes: `${CLAUDE_PLUGIN_ROOT}/bin/task/chief-review.sh <builder-id>`. Round 1 spawns the reviewer `<builder-id>-rv`; later rounds re-arm it. Run it in the background. The watcher wakes you when the reviewer reports.
+2. No: go to landing. Yes: `${CLAUDE_PLUGIN_ROOT}/bin/task/chief-review.sh <builder-id>`. Round 1 spawns the reviewer `<builder-id>-rv` (with `strategy = all` in the `[reviewer]` pool: one `<builder-id>-rv-<agent>` per entry); later rounds re-arm them all. Run it in the background. The watcher wakes you when the reviewer reports.
    If the operator says "review everything this session", skip the question for this conversation until they revoke it. Still present every verdict.
-3. Reviewer `done`: present the verdict (PASS, or the blocking findings, then the suggestions) from `.chief/tasks/<reviewer-id>/report.md`. Hold the reviewer (`chief-backlog.sh hold <reviewer-id> "round N <verdict>, idle"`) and propose the next step:
+3. Reviewer `done` (with several, wait for all, then present each separately and name the agent): present the verdict (PASS, or the blocking findings, then the suggestions) from `.chief/tasks/<reviewer-id>/report.md`. Hold the reviewer (`chief-backlog.sh hold <reviewer-id> "round N <verdict>, idle"`) and propose the next step:
    - FAIL: offer to send the findings to the builder. The operator may add comments or drop findings first.
    - PASS: offer to land it or keep going.
    - Reviewer `failed`: the review did not complete; report why.
 4. Operator approves sending: `${CLAUDE_PLUGIN_ROOT}/bin/task/chief-send.sh <builder-id> "<blocking findings, the operator's additions, the report path>"`, then `chief-backlog.sh status <builder-id> in-flight`.
 5. Builder `done` again: say it was fixed in `<sha7>` and ask again (step 1). There is no round cap.
 6. Post findings to the PR only when the operator asks: see "Post a review".
-7. `chief-teardown.sh <builder-id>` also discards its reviewer: name both in the go-ahead. A reviewer alone: `chief-teardown.sh <reviewer-id>`, on the go-ahead.
+7. `chief-teardown.sh <builder-id>` also discards its reviewers: name them all in the go-ahead. A reviewer alone: `chief-teardown.sh <reviewer-id>`, on the go-ahead.
 
 ## After the operator responds
 
@@ -97,7 +97,7 @@ A done researcher or brainstormer with a report can be followed by a successor: 
 - **Post a review or approve** (only when the operator asks) - comment on the specific file and line for each finding where the host supports it, otherwise put `file:line` in the comment text, and give the verdict in the same review.
 - **Merge it** - as under "Accepted".
 - **Abandon with an open PR** - only on the operator's explicit instruction: close the PR on the host first, with a one-line comment saying why. Then `${CLAUDE_PLUGIN_ROOT}/bin/task/chief-control.sh <id> exit` (stops the worker, keeps its worktree and commits) or `${CLAUDE_PLUGIN_ROOT}/bin/chief-teardown.sh <id> --abandon` (discards the worktree and the local branch). Neither touches the PR or the remote branch. An open PR is not subject to teardown: a reviewer may request changes, so tear down only once it has landed or the operator abandons it.
-- **Landed** - confirm on the host that the PR is merged, `${CLAUDE_PLUGIN_ROOT}/bin/chief-backlog.sh done <id>` (if not already), then `${CLAUDE_PLUGIN_ROOT}/bin/chief-teardown.sh <id>`; it also discards the builder's reviewer. Teardown proves landing via git (squash and rebase merges included, git >= 2.38), not the host; if git cannot prove it, verify the PR is merged and use `--abandon`. Teardown keeps the remote branch.
+- **Landed** - confirm on the host that the PR is merged, `${CLAUDE_PLUGIN_ROOT}/bin/chief-backlog.sh done <id>` (if not already), then `${CLAUDE_PLUGIN_ROOT}/bin/chief-teardown.sh <id>`; it also discards the builder's reviewers. Teardown proves landing via git (squash and rebase merges included, git >= 2.38), not the host; if git cannot prove it, verify the PR is merged and use `--abandon`. Teardown keeps the remote branch.
 
 ## Backlog reference
 
