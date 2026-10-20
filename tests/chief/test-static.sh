@@ -34,6 +34,6 @@ while IFS= read -r -d '' f; do
     echo "  [FAIL] executable: $rel (missing +x)"
     FAIL_COUNT=$((FAIL_COUNT + 1))
   fi
-done < <(find "$CHIEF/bin" -maxdepth 1 -name '*.sh' -print0; find "$CHIEF/bin/task" "$CHIEF/bin/pr" -maxdepth 1 -name '*.sh' -print0; find "$CHIEF/hooks" -maxdepth 1 -name '*.sh' -print0)
+done < <(find "$CHIEF/bin" -maxdepth 1 -name '*.sh' -print0; find "$CHIEF/bin/task" -maxdepth 1 -name '*.sh' -print0; find "$CHIEF/hooks" -maxdepth 1 -name '*.sh' -print0)
 
 harness_summary

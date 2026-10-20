@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # chief-backlog.sh - the whole backlog: one markdown file, no external tool.
 #
-# Format, one record per section in $DATA/backlog.md:
+# Format, one record per section in $CHIEF_HOME/backlog.md:
 #   ## <id> [<status>] <title>
 #   note: <free text, optional>
 #
@@ -20,11 +20,11 @@
 set -euo pipefail
 
 . "$(dirname "${BASH_SOURCE[0]}")/lib/paths.sh"
+chief_ensure_dirs
 . "$CHIEF_ROOT/bin/lib/lock.sh"
 . "$CHIEF_ROOT/bin/lib/meta.sh"
 . "$CHIEF_ROOT/bin/lib/meta-extensions.sh"
 
-BACKLOG="$DATA/backlog.md"
 LOCK="$STATE/.backlog.lock"
 touch "$BACKLOG"
 
@@ -37,7 +37,7 @@ _rewrite() {
   shift
   chief_lock_acquire "$LOCK" 10 || fail "could not acquire backlog lock"
   local tmp
-  tmp=$(mktemp "$DATA/.backlog.md.XXXXXX")
+  tmp=$(mktemp "$CHIEF_HOME/.backlog.md.XXXXXX")
   # "$@" (the -v assignments) must precede the program text - they're awk
   # options, not operands - so it comes first even though it read the other
   # way at the call sites below.
@@ -90,7 +90,7 @@ cmd_status() {
       # baseline so chief-watch.sh can recognize "nothing new yet" and hold
       # off until the state actually moves past this point.
       local baseline
-      baseline=$("$CHIEF_ROOT/bin/task/chief-crew-state.sh" "$id" 2>/dev/null || true)
+      baseline=$(chief_notify_line "$("$CHIEF_ROOT/bin/task/chief-crew-state.sh" "$id" 2>/dev/null || true)")
       [ -n "$baseline" ] && chief_meta_set "$id" notify-baseline "$baseline"
     fi
     chief_meta_set "$id" status working

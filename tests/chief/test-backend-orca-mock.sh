@@ -155,15 +155,18 @@ mkdir -p "$ORCA_MOCK_WORKTREES"
 export CHIEF_ORCA_PROMPT_WAIT=1 CHIEF_ORCA_START_WAIT=1
 export CHIEF_HOME="$WORK/.chief"
 . "$CHIEF_BIN/lib/paths.sh"
+chief_ensure_dirs
 . "$CHIEF_BIN/lib/meta.sh"
 . "$CHIEF_BIN/lib/agents/agent.sh"
 . "$CHIEF_BIN/lib/backends/orca.sh"
+capture() { _chief_orca_screen "$(_chief_orca_handle "$1")"; }
 
 ID=t-orca-1
 BRANCH="chief/$ID"
 BRIEF="$WORK/brief.md"
 printf 'Reply with exactly the single word: ok\n' > "$BRIEF"
 
+chief_meta_set "$ID" agent claude
 SPAWN_OUTPUT=$(backend_spawn "$ID" "$WORK/project" "$BRIEF" "$BRANCH" 2>"$WORK/spawn.err")
 SPAWN_RC=$?
 assert_eq "$SPAWN_RC" "0" "backend_spawn succeeds"
@@ -189,6 +192,7 @@ assert_contains "$(cat "$ORCA_MOCK_LOG")" "terminal send --terminal term_mock-1 
   "backend_spawn sends the brief's own content (not a path) once the agent is ready"
 
 : > "$ORCA_MOCK_LOG"
+chief_meta_set "t-orca-fail" agent claude
 ORCA_MOCK_WT_FAIL=1 backend_spawn "t-orca-fail" "$WORK/project" "$BRIEF" "chief/t-orca-fail" 2>"$WORK/spawn-fail.err"
 assert_eq "$?" "1" "backend_spawn fails when 'orca worktree create' fails"
 assert_contains "$(cat "$WORK/spawn-fail.err")" "orca worktree create" \
@@ -197,12 +201,14 @@ assert_contains "$(cat "$WORK/spawn-fail.err")" "orca worktree create" \
 # An already-registered project is not registered again; a failed registration
 # fails the spawn clearly, before any worktree exists.
 : > "$ORCA_MOCK_LOG"
+chief_meta_set "t-orca-reg" agent claude
 backend_spawn "t-orca-reg" "$WORK/project" "$BRIEF" "chief/t-orca-reg" >/dev/null 2>&1
 assert_not_contains "$(cat "$ORCA_MOCK_LOG")" "repo add" "backend_spawn skips 'orca repo add' for an already-registered project"
 backend_spawn_cleanup "t-orca-reg" "$WORK/project" "chief/t-orca-reg"
 
 : > "$ORCA_MOCK_LOG"
 mkdir -p "$WORK/project2" && ( cd "$WORK/project2" && git init -q -b main && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init )
+chief_meta_set "t-orca-noreg" agent claude
 ORCA_MOCK_REPO_ADD_FAIL=1 backend_spawn "t-orca-noreg" "$WORK/project2" "$BRIEF" "chief/t-orca-noreg" 2>"$WORK/spawn-noreg.err"
 assert_eq "$?" "1" "backend_spawn fails when registering the project fails"
 assert_contains "$(cat "$WORK/spawn-noreg.err")" "could not register '$WORK/project2' with Orca" \
@@ -213,9 +219,9 @@ chief_meta_set "$ID" endpoint "$ENDPOINT"
 chief_meta_set "$ID" worktree "$WORKTREE"
 chief_meta_set "$ID" project "$WORK/project"
 
-CAPTURE=$(backend_capture "$ID")
-assert_contains "$CAPTURE" "bypass permissions on" "backend_capture returns the rendered screen's lines"
-assert_contains "$(cat "$ORCA_MOCK_LOG")" "terminal read --terminal term_mock-1 --screen --json" "backend_capture reads the rendered screen, not the raw stream"
+CAPTURE=$(capture "$ID")
+assert_contains "$CAPTURE" "bypass permissions on" "capture returns the rendered screen's lines"
+assert_contains "$(cat "$ORCA_MOCK_LOG")" "terminal read --terminal term_mock-1 --screen --json" "capture reads the rendered screen, not the raw stream"
 
 : > "$ORCA_MOCK_LOG"
 ORCA_MOCK_BUSY=0 backend_busy "$ID"
@@ -283,6 +289,7 @@ assert_not_contains "$(cat "$ORCA_MOCK_LOG")" "worktree create" \
 # back, found by branch. An unrelated worktree is left alone.
 orca worktree create --repo "path:$WORK/project" --name t-orca-c --parent-worktree "path:$WORK/project" --json >/dev/null 2>&1
 git -C "$ORCA_MOCK_WORKTREES/t-orca-c" branch -m chief/t-orca-c
+chief_meta_set "t-orca-keep" agent claude
 backend_spawn "t-orca-keep" "$WORK/project" "$BRIEF" "chief/t-orca-keep" >/dev/null 2>&1
 assert_file_exists "$ORCA_MOCK_WORKTREES/t-orca-c/.git" "a leftover worktree exists to roll back"
 : > "$ORCA_MOCK_LOG"
@@ -323,6 +330,7 @@ rm -f "$ORCA_MOCK_LOG".{enter,resent,sent1}
 
 # The first prompt waits for the agent's TUI on the rendered screen, not tui-idle.
 : > "$ORCA_MOCK_LOG"
+chief_meta_set "t-orca-ready" agent claude
 backend_spawn "t-orca-ready" "$WORK/project" "$BRIEF" "chief/t-orca-ready" >/dev/null 2>&1
 assert_contains "$(cat "$ORCA_MOCK_LOG")" "terminal read --terminal term_mock-1 --screen --json" "backend_spawn waits for the agent's TUI on the rendered screen"
 assert_not_contains "$(cat "$ORCA_MOCK_LOG")" "tui-idle" "backend_spawn does not trust tui-idle for readiness"
@@ -353,6 +361,7 @@ backend_spawn_cleanup "t-orca-cmd" "$WORK/project" "chief/t-orca-cmd"
 spawn_fails() {  # <label> <id> [env assignments...] - runs backend_spawn with the env set
   local label=$1 sid=$2; shift 2
   : > "$ORCA_MOCK_LOG"
+  chief_meta_set "$sid" agent claude
   env "$@" bash -c '. "$0"; . "$1"; . "$2"; . "$7"; . "$3"; backend_spawn "$4" "$5" "$6" "chief/$4"' \
     "$CHIEF_BIN/lib/paths.sh" "$CHIEF_BIN/lib/meta.sh" "$CHIEF_BIN/lib/backends/orca.sh" /dev/null "$sid" "$WORK/project" "$BRIEF" "$CHIEF_BIN/lib/agents/agent.sh" 2>"$WORK/fail.err"
   assert_eq "$?" "1" "backend_spawn fails: $label"
@@ -366,6 +375,7 @@ assert_contains "$(cat "$WORK/fail.err")" "agent not ready" "the not-ready failu
 spawn_fails "a lost prompt that can't be resent" t-orca-lost ORCA_MOCK_PROMPT_LANDS=0 ORCA_MOCK_SEND_FAIL=1
 
 # Relaunch also refuses an agent that is not ready.
+chief_meta_set "t-orca-relnb" agent claude
 chief_meta_set "t-orca-relnb" worktree "$ORCA_MOCK_WORKTREES/t-orca-keep"
 : > "$ORCA_MOCK_LOG"
 ORCA_MOCK_NO_BYPASS=1 backend_relaunch "t-orca-relnb" "$BRIEF" 2>/dev/null
@@ -430,6 +440,6 @@ ORCA_MOCK_PROMPT_LANDS=0 ORCA_MOCK_SEND_FAIL=1 "$CHIEF_BIN/chief-spawn.sh" "$FAI
 assert_eq "$?" "1" "chief-spawn.sh fails when the orca backend can't deliver the brief"
 assert_file_missing "$ORCA_MOCK_WORKTREES/$FAIL" "chief-spawn.sh's rollback leaves no Orca worktree behind"
 assert_eq "$(git -C "$WORK/project" branch --list 'feat/flowfail' | wc -l | tr -d ' ')" "0" "chief-spawn.sh's rollback leaves no branch behind"
-assert_file_missing "$CHIEF_HOME/state/$FAIL.meta" "chief-spawn.sh's rollback leaves no meta record"
+assert_file_missing "$CHIEF_HOME/tasks/$FAIL/meta" "chief-spawn.sh's rollback leaves no meta record"
 
 harness_summary

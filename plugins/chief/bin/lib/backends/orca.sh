@@ -211,12 +211,6 @@ backend_send() {
   esac >/dev/null 2>&1
 }
 
-# The rendered screen, not the accumulated stream: a TUI repaints lines, so
-# the stream comes back as stacked fragments.
-backend_capture() {
-  _chief_orca_screen "$(_chief_orca_handle "$1")"
-}
-
 backend_busy() {
   local id=$1
   local handle

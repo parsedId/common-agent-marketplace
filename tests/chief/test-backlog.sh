@@ -14,7 +14,7 @@ cd "$WORK" && git init -q
 export CHIEF_HOME="$WORK/.chief"
 . "$CHIEF_BIN/lib/paths.sh"
 . "$CHIEF_BIN/lib/meta.sh"
-BACKLOG="$CHIEF_HOME/data/backlog.md"
+BACKLOG="$CHIEF_HOME/backlog.md"
 
 echo "test-backlog:"
 

@@ -29,6 +29,18 @@ plugins/<new-plugin-name>/
 5. Add the new plugin to the root `README.md`'s "Available plugins" list.
 6. Validate every manifest parses: `python3 -m json.tool <path>`.
 
+## Marketplace versions
+
+`metadata.version` in `.claude-plugin/marketplace.json` versions the
+marketplace as a whole. The tag `v<version>` pins every plugin version
+listed in that file at that commit.
+
+- Bump `metadata.version` in the same PR as any plugin version change.
+- While 0.x: bump the minor for plugin additions, removals, or breaking
+  changes; bump the patch for any other plugin bump.
+- Don't tag by hand. The `tag-marketplace` workflow creates `v<version>`
+  on merge to `main` if it doesn't exist yet.
+
 ## Skill conventions
 
 - One directory per skill under `<plugin>/skills/<skill-name>/SKILL.md`.
@@ -77,4 +89,4 @@ Plugins with real executable code or checkable skill behavior get actual
 tests. See [docs/testing.md](docs/testing.md) for the two tiers
 (`tests/<plugin-name>/` for non-LLM mechanics, `tests/claude-code/` for
 skill-behavior checks) and how to add coverage when you add a new plugin.
-No CI workflow yet — tests run locally, by hand.
+Tests run locally, by hand. The only CI workflow tags marketplace versions.

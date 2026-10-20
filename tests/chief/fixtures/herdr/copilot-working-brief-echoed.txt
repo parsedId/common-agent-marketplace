@@ -1,0 +1,40 @@
+ [Current]  Sessions   Issues   Pull requests   Gists
+
+   # Rules                                                                                                            ┃
+   1. Never push to any remote, never open a PR.                                                                      ┃
+   2. Write your findings to `/work/chief/tasks/t-dbl/report.md` as you go, not only at the end.        ┃
+   3. Report status by appending exactly one line at a time:                                                          ┃
+      `echo "{state}: {one short line}" >> /work/chief/tasks/t-dbl/status`                              ┃
+      States: `working`, `needs-decision`, `blocked`, `done`, `failed`.                                               ┃
+      Chief only reads your LAST line. After `done`, `blocked`, `needs-decision`, or `failed`, report `working:       ┃
+   resuming` again before acting on a new instruction.                                                                ┃
+      Whenever you end a turn and are about to wait for input, run `touch                                             ┃
+   /work/chief/tasks/t-dbl/turn-ended` first: it is how Chief tells a quietly idle worker from a        ┃
+   stalled one.                                                                                                       ┃
+   4. Use `needs-decision: {summary of options}` for a choice that belongs to a human, then stop until                ┃
+   answered.                                                                                                          ┃
+   5. Use `blocked: {why}` if you hit the same obstacle twice in a row, and stop.                                     ┃
+                                                                                                                      ┃
+   # Instruction inbox                                                                                                ┃
+   Chief may steer you mid-task through `/work/chief/tasks/t-dbl/inbox`. When a message tells you       ┃
+   an instruction is waiting there - or at any natural checkpoint when you're unsure what to do next - list           ┃
+   `/work/chief/tasks/t-dbl/inbox/*.msg`, read and act on each in order, then acknowledge by            ┃
+   moving it: `mv /work/chief/tasks/t-dbl/inbox/NNN.msg                                                 ┃
+   /work/chief/tasks/t-dbl/inbox/handled/`. An empty or absent inbox needs no action.                   ┃
+                                                                                                                      ┃
+   # Definition of done                                                                                               ┃
+   - `/work/chief/tasks/t-dbl/report.md` is self-contained: a different agent that never saw this       ┃
+   conversation can act on it alone. It states the decisions and their rationale, the options you rejected,           ┃
+   constraints, file/symbol pointers, and open items.                                                                 ┃
+   - A report may recommend implementation but never performs it.                                                     ┃
+   - Your last status line is `done: {one-line summary}` or `failed: {why}`.                                          ┃
+                                                                                                                      ┃
+ ● Copilot CLI v1.0.98 was downloaded, but the executable was not replaced: Error: EACCES: permission denied, mkdir   ┃
+   '/usr/local/share/nvm/versions/node/v24.21.0/lib/node_modules/@github/copilot/node_modules/@github/copilot-linux-x ┃
+   64/.copilot-update-1792175880840'. Run /update to retry.                                                           ┃
+                                                                                                                      ┃
+ /work/chief/worktrees/t-dbl [⎇ research/t-dbl]                                      Session: 0 AIC used
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ◉ Working esc edit prompt                                                                           Auto → gpt-6-luna

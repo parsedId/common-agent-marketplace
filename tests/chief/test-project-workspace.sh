@@ -34,7 +34,7 @@ HOME_DIR="$WORK/ws/.chief"
 cd "$P"
 assert_success "spawn: first task, run with cwd inside the project" -- \
   timeout 20 "$BIN/chief-spawn.sh" a-1 "$P" --mode builder --branch feat/a-1 --intent "one"
-assert_file_exists "$HOME_DIR/state/a-1.meta" "spawn: CHIEF_HOME resolved to the workspace root, not the project"
+assert_file_exists "$HOME_DIR/tasks/a-1/meta" "spawn: CHIEF_HOME resolved to the workspace root, not the project"
 assert_file_missing "$P/.chief" "spawn: no .chief created inside the project"
 assert_file_exists "$WORK/ws/.chief/worktrees/a-1/from-origin.txt" "spawn: the worktree branches from the freshly synced origin"
 

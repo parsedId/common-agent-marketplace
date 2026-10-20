@@ -51,7 +51,7 @@ assert_contains "$ctx2" "(empty)" "session-start: reports an empty backlog plain
 
 "$BIN/chief-backlog.sh" add t-1 "test task" >/dev/null
 timeout 10 "$BIN/chief-spawn.sh" t-1 "$WORK/configured/project" --mode builder --branch feat/t-1 --intent "test" --spec "test" >/dev/null
-echo "done: finished" >> "$CHIEF_HOME/state/t-1.status"
+echo "done: finished" >> "$CHIEF_HOME/tasks/t-1/status"
 out3=$("$SS")
 ctx3=$(json_field "d['hookSpecificOutput']['additionalContext']" "$out3")
 assert_contains "$ctx3" "t-1: done: finished" "session-start: shows the in-flight task's latest status"
@@ -61,7 +61,7 @@ assert_contains "$ctx3" "t-1: done: finished [mode: builder]" \
 
 timeout 10 "$BIN/chief-spawn.sh" bs-1 "$WORK/configured/project" --mode brainstormer --branch feat/bs-1 --intent "idea" >/dev/null
 ctx5=$(json_field "d['hookSpecificOutput']['additionalContext']" "$("$SS")")
-assert_contains "$ctx5" "[mode: brainstormer] [agent: claude] [attach: tail -f '$CHIEF_HOME/state/bs-1.term.log']" \
+assert_contains "$ctx5" "[mode: brainstormer] [agent: claude] [attach: tail -f '$CHIEF_HOME/tasks/bs-1/term.log']" \
   "session-start: repeats the attach hint for an in-flight brainstormer"
 assert_not_contains "$ctx5" "[mode: builder] [agent: claude] [attach:" "session-start: no attach hint for a builder"
 

@@ -7,8 +7,9 @@ REPO_ROOT="$(cd "$TEST_DIR/../.." && pwd)"
 CHIEF_BIN="$REPO_ROOT/plugins/chief/bin"
 . "$TEST_DIR/lib/harness.sh"
 
-STATE=$(mktemp -d)
-trap 'rm -rf "$STATE"' EXIT
+CHIEF_HOME=$(mktemp -d)
+trap 'rm -rf "$CHIEF_HOME"' EXIT
+. "$CHIEF_BIN/lib/paths.sh"
 . "$CHIEF_BIN/lib/meta.sh"
 
 echo "test-meta:"
@@ -16,8 +17,15 @@ echo "test-meta:"
 chief_meta_set t1 project /home/foo
 chief_meta_set t1 status spawned
 chief_meta_set t1 status working
-assert_eq "$(cat "$STATE/t1.meta" | wc -l | tr -d ' ')" "2" "set() upserts in place, does not duplicate the key"
+assert_eq "$(cat "$TASKS/t1/meta" | wc -l | tr -d ' ')" "2" "set() upserts in place, does not duplicate the key"
 assert_eq "$(chief_meta_get t1 status)" "working" "get() returns the latest value"
+
+chief_task_archive t1
+assert_file_missing "$TASKS/t1" "archive moves the folder out of tasks/"
+assert_file_exists "$ARCHIVE/t1/meta" "archive keeps the meta"
+assert_eq "$(chief_meta_get t1 status)" "working" "get() still resolves an archived task"
+assert_eq "$(chief_task_path t1 report.md)" "$ARCHIVE/t1/report.md" "paths of an archived task point into the archive"
+assert_eq "$(chief_task_path t2 report.md)" "$TASKS/t2/report.md" "paths of an unknown task point into tasks/"
 assert_eq "$(chief_meta_get t1 project)" "/home/foo" "get() returns an untouched key"
 
 chief_meta_get t1 nope >/dev/null 2>&1

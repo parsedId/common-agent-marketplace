@@ -29,14 +29,14 @@ fi
 TEXT=${1:-}
 [ -n "$(printf '%s' "$TEXT" | tr -d '[:space:]')" ] || fail "message text must not be empty"
 
-INBOX="$STATE/$ID.inbox"
+INBOX=$(chief_task_path "$ID" inbox)
 mkdir -p "$INBOX/handled"
 NEXT=$(
   { ls "$INBOX" 2>/dev/null | grep -E '^[0-9]{3}\.msg$' || true
     ls "$INBOX/handled" 2>/dev/null | grep -E '^[0-9]{3}\.msg$' || true
   } | sed -E 's/\.msg$//' | sort -n | tail -1
 )
-NEXT=$(printf '%03d' "$(( ${NEXT:-0} + 1 ))")
+NEXT=$(printf '%03d' "$(( 10#${NEXT:-0} + 1 ))")
 MSG_FILE="$INBOX/$NEXT.msg"
 printf '%s\n' "$TEXT" > "$MSG_FILE"
 

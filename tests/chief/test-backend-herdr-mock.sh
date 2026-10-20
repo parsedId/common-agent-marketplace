@@ -24,6 +24,7 @@ export CHIEF_HERDR_SUBMIT_TIMEOUT_MS=2000 CHIEF_HERDR_START_WAIT=2 CHIEF_HERDR_P
 #                         prompt.N.screen replaces `screen` after the N-th prompt;
 #                         keys.screen replaces it after any `send-keys ... enter`
 #   get.json              `agent get` reply; wait.rc  `agent wait` exit code
+#   workspaces.json       `workspace list` reply (default: none)
 cat > "$WORK/bin/herdr" <<'FAKE_HERDR'
 #!/usr/bin/env bash
 case "$1 $2" in "agent prompt") echo "$1 $2 $3 <${#4}B> ${*:5}" >> "$FAKE/calls";; *) echo "$*" >> "$FAKE/calls";; esac
@@ -36,7 +37,7 @@ case "$1 $2" in
                      git -C "$c" worktree add -q -b "$b" "$d" >/dev/null 2>&1
                      echo '{"result":{"root_pane":{"pane_id":"w9:p1"}}}' ;;
   "worktree open")   echo '{"result":{"root_pane":{"pane_id":"w9:p1"}}}' ;;
-  "workspace list")  echo '{"result":{"workspaces":[]}}' ;;
+  "workspace list")  cat "$FAKE/workspaces.json" 2>/dev/null || echo '{"result":{"workspaces":[]}}' ;;
   "workspace close") ;;
   "agent start")     n=$(bump start); if [ -f "$FAKE/start.json" ] || [ -f "$FAKE/start.$n.json" ]; then reply start $n; exit $?; fi
                      echo '{"result":{"agent":{"agent_status":"idle","interactive_ready":true}}}' ;;
@@ -55,13 +56,25 @@ STALLED='{"error":{"code":"agent_prompt_stalled","message":"agent prompt produce
 NOT_READY='{"error":{"code":"agent_not_ready","message":"agent t1 is blocked during startup and is not ready for prompts"}}'
 reset() { rm -rf "$FAKE"; mkdir -p "$FAKE"; : > "$FAKE/calls"; }
 count() { grep -c -- "$1" "$FAKE/calls" || true; }
+# workspace list holding <id>'s workspace (w1, old-form label), look-alikes w2/w3 and the project's own w0
+workspaces_for() {  # <id> <project>
+  local wt="$CHIEF_HOME/worktrees"
+  jq -n --arg id "$1" --arg wt "$wt" --arg proj "$2" '{result:{workspaces:[
+    {workspace_id:"w0",label:"proj",worktree:{checkout_path:$proj,is_linked_worktree:false}},
+    {workspace_id:"w1",label:($id + " · researcher · proj"),worktree:{checkout_path:($wt + "/" + $id),is_linked_worktree:true}},
+    {workspace_id:"w2",label:($id + "-review"),worktree:{checkout_path:($wt + "/" + $id + "-review"),is_linked_worktree:true}},
+    {workspace_id:"w3",label:($id + "0"),worktree:{checkout_path:($wt + "/" + $id + "0"),is_linked_worktree:true}}]}}' > "$FAKE/workspaces.json"
+}
+closed_workspaces() { grep -- '^workspace close' "$FAKE/calls" | cut -d' ' -f3 | tr '\n' ' '; }
 # the trust dialog fixture for <path>, wrapped like the terminal wraps it
 dialog_for() {
   awk -v p="$1" '/@WORKTREE@/ { for (i = 1; i <= length(p); i += 60) print " " substr(p, i, 60); next } { print }' "$FX/screen-trust-dialog.txt"
 }
 
 . "$CHIEF_BIN/lib/paths.sh"; . "$CHIEF_BIN/lib/meta.sh"; . "$CHIEF_BIN/lib/agents/agent.sh"
+chief_ensure_dirs
 . "$CHIEF_BIN/lib/backends/herdr.sh"
+chief_meta_set t1 agent claude
 chief_agent_use t1 >/dev/null 2>&1
 WT="$WORK/chief/worktrees/t1"
 BRIEF="You are a researcher: an autonomous worker agent dispatched by Chief. $(printf 'line %s\n' $(seq 1 40))"
@@ -168,6 +181,26 @@ reset; cp "$FX/screen-ready.txt" "$FAKE/screen"; echo "$STALLED" > "$FAKE/prompt
 err=$(_chief_herdr_prompt t1 "$BRIEF" 2>&1 >/dev/null)
 assert_eq "$(count 'agent prompt')" "2" "stalled again after the resend -> not resent a third time"
 assert_contains "$err" "no turn started" "...and the failure says no turn started"
+# copilot echoes the brief inline (no needle, no placeholder) and is ready again
+# once its turn ends: the screen changed since the send -> landed, never resent
+reset; chief_meta_set t1 agent copilot; chief_agent_use t1 >/dev/null 2>&1
+cp "$FX/copilot-ready-empty.txt" "$FAKE/screen.1"; cp "$FX/copilot-working-brief-echoed.txt" "$FAKE/screen"
+cp "$FX/copilot-idle-between-steps.txt" "$FAKE/screen.3"
+echo "$STALLED" > "$FAKE/prompt.json"; echo 1 > "$FAKE/prompt.rc"; echo 0 > "$FAKE/wait.rc"
+_chief_herdr_prompt t1 "$BRIEF" >/dev/null 2>&1
+assert_eq "$?" "0" "copilot: brief echoed inline, ready again after the turn -> success"
+assert_eq "$(count 'agent prompt')" "1" "...the brief sent once"
+reset; cp "$FX/copilot-ready-empty.txt" "$FAKE/screen.1"; cp "$FX/copilot-working-brief-echoed.txt" "$FAKE/screen"
+cp "$FX/copilot-idle-between-steps.txt" "$FAKE/screen.3"
+echo "$STALLED" > "$FAKE/prompt.json"; echo 1 > "$FAKE/prompt.rc"; echo 1 > "$FAKE/wait.rc"
+_chief_herdr_prompt t1 "$BRIEF" >/dev/null 2>&1
+assert_eq "$?" "0" "copilot: landed brief, the wait times out -> still success, no rollback"
+assert_eq "$(count 'agent prompt')" "1" "...the brief sent once"
+reset; cp "$FX/copilot-ready-empty.txt" "$FAKE/screen"
+echo "$STALLED" > "$FAKE/prompt.1.json"; echo 1 > "$FAKE/prompt.1.rc"; echo "$WORKING" > "$FAKE/prompt.json"
+_chief_herdr_prompt t1 "$BRIEF" >/dev/null 2>&1
+assert_eq "$(count 'agent prompt')" "2" "copilot: screen unchanged since the send -> resent once"
+chief_meta_set t1 agent claude; chief_agent_use t1 >/dev/null 2>&1
 # TUI not rendered yet: the text is queued in the pty
 reset; cp "$FX/screen-shell-only.txt" "$FAKE/screen"; echo "$STALLED" > "$FAKE/prompt.json"; echo 1 > "$FAKE/prompt.rc"
 _chief_herdr_prompt t1 "$BRIEF" >/dev/null 2>&1
@@ -187,19 +220,22 @@ echo "[spawn] chief-spawn.sh prints 'spawned:' only when a turn started"
 mkproj() { rm -rf "$WORK/proj"; mkdir -p "$WORK/proj"; ( cd "$WORK/proj" && git init -q -b main && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init ); }
 spawn() { CHIEF_BACKEND=herdr bash "$CHIEF_BIN/chief-spawn.sh" "$1" "$WORK/proj" --mode researcher --branch "res/$1" --intent "x" 2>&1; }
 mkproj; reset; cp "$FX/screen-ready.txt" "$FAKE/screen"; echo "$BLOCKED" > "$FAKE/prompt.json"; dialog_for "$CHIEF_HOME/worktrees/s1" > "$FAKE/prompt.1.screen"
+workspaces_for s1 "$WORK/proj"
 out=$(spawn s1); rc=$?
 assert_eq "$((rc != 0))" "1" "a dialog and a 'blocked' reply -> non-zero"
 assert_not_contains "$out" "spawned:" "...no 'spawned:' line"
-assert_file_missing "$CHIEF_HOME/state/s1.meta" "...rolled back, no meta left"
+assert_file_missing "$CHIEF_HOME/tasks/s1/meta" "...rolled back, no meta left"
+assert_eq "$(closed_workspaces)" "w1 " "...closing only the task's workspace by its worktree path, not look-alikes or the project's"
 mkproj; reset; cp "$FX/screen-shell-only.txt" "$FAKE/screen"
 out=$(spawn s3); rc=$?
 assert_eq "$((rc != 0))" "1" "a pane that never renders -> non-zero"
 assert_not_contains "$out" "spawned:" "...no 'spawned:' line"
-assert_file_missing "$CHIEF_HOME/state/s3.meta" "...rolled back, no meta left"
+assert_file_missing "$CHIEF_HOME/tasks/s3/meta" "...rolled back, no meta left"
 mkproj; reset; cp "$FX/screen-ready.txt" "$FAKE/screen"; echo "$WORKING" > "$FAKE/prompt.json"
 out=$(spawn s2); rc=$?
 assert_eq "$rc" "0" "a healthy spawn succeeds"
 assert_contains "$out" "spawned: s2" "...and prints 'spawned: s2'"
+assert_contains "$(cat "$FAKE/calls")" "--label s2 " "...creating its workspace labeled with the plain id"
 mkproj; reset; dialog_for "$CHIEF_HOME/worktrees/s4" > "$FAKE/screen"; cp "$FX/screen-ready.txt" "$FAKE/keys.screen"; echo "$WORKING" > "$FAKE/prompt.json"
 out=$(spawn s4); rc=$?
 assert_eq "$rc" "0" "a lost pre-trust (dialog for the new worktree) is accepted and the spawn succeeds"
@@ -209,14 +245,17 @@ echo "[relaunch] backend_relaunch shares the path"
 mkproj; reset; R_WT="$CHIEF_HOME/worktrees/r1"; git -C "$WORK/proj" worktree add -q -b res/r1 "$R_WT"
 chief_meta_set r1 project "$WORK/proj"; chief_meta_set r1 worktree "$R_WT"; chief_meta_set r1 mode researcher; chief_meta_set r1 agent claude
 printf 'brief\n' > "$WORK/brief.md"
-cp "$FX/screen-ready.txt" "$FAKE/screen"; echo "$BLOCKED" > "$FAKE/prompt.json"
+cp "$FX/screen-ready.txt" "$FAKE/screen"; echo "$BLOCKED" > "$FAKE/prompt.json"; workspaces_for r1 "$WORK/proj"
 backend_relaunch r1 "$WORK/brief.md" >/dev/null 2>&1
 assert_eq "$(( $? != 0 ))" "1" "a 'blocked' reply -> relaunch fails"
+assert_eq "$(closed_workspaces)" "w1 " "...closing only the task's workspace by its worktree path, not look-alikes or the project's"
 assert_eq "$(chief_meta_get r1 endpoint 2>/dev/null)" "" "...and records no endpoint"
 reset; cp "$FX/screen-ready.txt" "$FAKE/screen"; echo "$WORKING" > "$FAKE/prompt.json"
 backend_relaunch r1 "$WORK/brief.md" >/dev/null 2>&1
 assert_eq "$?" "0" "a started turn -> relaunch succeeds"
 assert_eq "$(chief_meta_get r1 endpoint)" "herdr:w9:p1" "...and records the endpoint"
+assert_contains "$(cat "$FAKE/calls")" "--label r1 " "...reopening its workspace labeled with the plain id"
+assert_eq "$(chief_meta_get r1 label 2>/dev/null || echo none)" "none" "...recording no label"
 
 echo "[name] herdr agent names are valid, deterministic and unique"
 LONG1=build-dotnet-common-keycloak-by-name-review-copilot-gpt-6-1-sol

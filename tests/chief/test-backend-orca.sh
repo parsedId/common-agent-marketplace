@@ -68,7 +68,7 @@ wait_for_idle() {  # <id> [timeout-s]
 wait_capture() {  # <id> <text> [timeout-s] - the task's screen shows <text> (a transient hint can cover it briefly)
   local id=$1 text=$2 timeout=${3:-20} waited=0
   while [ "$waited" -lt "$timeout" ]; do
-    backend_capture "$id" | grep -qF -- "$text" && return 0
+    capture "$id" | grep -qF -- "$text" && return 0
     sleep 1
     waited=$((waited + 1))
   done
@@ -181,7 +181,10 @@ cleanup_claude() {
   return 0
 }
 cleanup() {
-  agent_release "${WORKTREE:-}"; agent_release "${WORKTREE2:-}"
+  if declare -F chief_agent_release >/dev/null; then
+    chief_agent_release "$ID" "${WORKTREE:-}" 2>/dev/null
+    chief_agent_release "$ID2" "${WORKTREE2:-}" 2>/dev/null
+  fi
   cleanup_orca
   cleanup_claude
   rm -rf "$WORK"
@@ -193,13 +196,16 @@ trap 'exit 129' HUP
 
 export CHIEF_HOME="$WORK/.chief"
 . "$CHIEF_BIN/lib/paths.sh"
+chief_ensure_dirs
 . "$CHIEF_BIN/lib/meta.sh"
 . "$CHIEF_BIN/lib/agents/agent.sh"
 . "$CHIEF_BIN/lib/backends/orca.sh"
+capture() { _chief_orca_screen "$(_chief_orca_handle "$1")"; }
 
 BRIEF="$WORK/brief.md"
 printf 'Reply with exactly the single word: ok\n' > "$BRIEF"
 
+chief_meta_set "$ID" agent claude
 SPAWN_OUTPUT=$(backend_spawn "$ID" "$PROJECT" "$BRIEF" "$BRANCH" 2>"$WORK/spawn.err")
 SPAWN_RC=$?
 assert_eq "$SPAWN_RC" "0" "backend_spawn succeeds"
@@ -230,8 +236,8 @@ CURRENT_BRANCH=$(git -C "$WORKTREE" rev-parse --abbrev-ref HEAD 2>/dev/null)
 assert_eq "$CURRENT_BRANCH" "$BRANCH" "the worktree is on the exact chief/<id> branch, renamed from Orca's own"
 
 wait_for_idle "$ID"
-CAPTURE=$(backend_capture "$ID")
-assert_contains "$CAPTURE" "ok" "backend_capture shows the claude reply"
+CAPTURE=$(capture "$ID")
+assert_contains "$CAPTURE" "ok" "the pane shows the claude reply"
 wait_capture "$ID" "bypass permissions"
 assert_eq "$?" "0" "backend_spawn starts the worker with bypass permissions on"
 
@@ -260,8 +266,8 @@ assert_contains "$NEW_ENDPOINT" "orca:" "backend_relaunch records a fresh orca e
 assert_eq "$?" "0" "backend_relaunch's endpoint differs from the original terminal"
 
 wait_for_idle "$ID"
-RELAUNCH_CAPTURE=$(backend_capture "$ID")
-assert_contains "$RELAUNCH_CAPTURE" "ok" "backend_capture shows the relaunched claude's reply"
+RELAUNCH_CAPTURE=$(capture "$ID")
+assert_contains "$RELAUNCH_CAPTURE" "ok" "the pane shows the relaunched claude's reply"
 
 backend_kill "$ID"
 
@@ -269,6 +275,7 @@ backend_kill "$ID"
 # project only once; rolling it back leaves the first alone.
 printf 'Reply with exactly the single word: ok\n' > "$WORK/brief3.md"
 REPO_ID=$(_repo_id)
+chief_meta_set "$ID2" agent claude
 SPAWN2=$(backend_spawn "$ID2" "$PROJECT" "$WORK/brief3.md" "chief/$ID2" 2>/dev/null)
 WORKTREE2=$(printf '%s\n' "$SPAWN2" | sed -n 1p)
 record_leaves "$WORKTREE2"
@@ -297,7 +304,7 @@ assert_eq "$(_child_count)" "0" "no task remains nested under the main worktree"
 export CHIEF_BACKEND=orca
 E2E="chief-test-e2e-$$"
 E2E_BRANCH="feat/$E2E"
-E2E_STATUS="$STATE/$E2E.status"
+E2E_STATUS="$TASKS/$E2E/status"
 wait_for_status() {  # <prefix> [timeout-s] - the task's last status line starts with <prefix>
   local waited=0 timeout=${2:-180}
   while [ "$waited" -lt "$timeout" ]; do
@@ -327,14 +334,14 @@ assert_eq "$(_child_count)" "1" "the main worktree has exactly the one task unde
 wait_for_status "done" 180
 assert_eq "$?" "0" "the builder reports done through its status file"
 wait_for_idle "$E2E"
-assert_contains "$(backend_capture "$E2E")" "ok" "backend_capture shows the builder's real reply"
+assert_contains "$(capture "$E2E")" "ok" "the pane shows the builder's real reply"
 wait_capture "$E2E" "bypass permissions"
 assert_eq "$?" "0" "the builder runs in bypass-permissions mode"
 assert_contains "$("$CHIEF_BIN/task/chief-crew-state.sh" "$E2E" 2>&1)" "state: done" "chief-crew-state.sh reports done"
 
 "$CHIEF_BIN/task/chief-send.sh" "$E2E" "no action needed, just reply ok" >"$WORK/e2e-send.out" 2>&1
 assert_eq "$?" "0" "chief-send.sh succeeds"
-assert_file_exists "$STATE/$E2E.inbox/001.msg" "chief-send.sh writes the durable inbox message"
+assert_file_exists "$TASKS/$E2E/inbox/001.msg" "chief-send.sh writes the durable inbox message"
 
 "$CHIEF_BIN/task/chief-control.sh" "$E2E" interrupt >/dev/null 2>&1
 assert_eq "$?" "0" "chief-control.sh interrupt succeeds"

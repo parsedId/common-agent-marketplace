@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# brief.sh - helpers for updating a task's data/<id>/brief.md in place.
-# Sourced by scripts that already sourced paths.sh (needs $DATA).
+# brief.sh - helpers for updating a task's tasks/<id>/brief.md in place.
 
 # chief_brief_strip_section <brief_file> <heading_prefix> - drops any
 # existing top-level section whose heading starts with heading_prefix (from
