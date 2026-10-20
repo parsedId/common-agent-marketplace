@@ -96,8 +96,8 @@ A done researcher or brainstormer with a report can be followed by a successor: 
 - **Post a review** (only when the operator asks) - `${CLAUDE_PLUGIN_ROOT}/bin/pr/chief-pr-review.sh <id> --comment "<text>"` or `--request-changes "<text>"`. Add `--file <path> --line <N>` to a `--comment` to attach it to a line (not valid with `--request-changes`).
 - **Approve it** - `${CLAUDE_PLUGIN_ROOT}/bin/pr/chief-pr-approve.sh <id>`.
 - **Merge it** - `${CLAUDE_PLUGIN_ROOT}/bin/pr/chief-pr-merge.sh <id> --confirm`. Squashes by default; pass `--merge` or `--rebase` only if the operator asks.
-- **Abandon** - `${CLAUDE_PLUGIN_ROOT}/bin/task/chief-control.sh <id> exit` stops the worker and keeps its worktree and commits. `${CLAUDE_PLUGIN_ROOT}/bin/chief-teardown.sh <id> --abandon` also discards the unlanded work; only on the operator's explicit instruction.
-- **Landed** - `${CLAUDE_PLUGIN_ROOT}/bin/chief-backlog.sh done <id>` (if not already), then `${CLAUDE_PLUGIN_ROOT}/bin/chief-teardown.sh <id>`. Teardown refuses unless the branch is reachable from the default branch (or `--abandon`); it also discards the builder's reviewers.
+- **Abandon** - `${CLAUDE_PLUGIN_ROOT}/bin/task/chief-control.sh <id> exit` stops the worker and keeps its worktree and commits. `${CLAUDE_PLUGIN_ROOT}/bin/chief-teardown.sh <id> --abandon` also discards the unlanded local work and keeps the remote branch; only on the operator's explicit instruction, after the open-PR check (see *What NOT to do*). Add `--delete-remote` only if the operator explicitly asks to delete the remote branch.
+- **Landed** - `${CLAUDE_PLUGIN_ROOT}/bin/chief-backlog.sh done <id>` (if not already), then `${CLAUDE_PLUGIN_ROOT}/bin/chief-teardown.sh <id>`. Teardown refuses unless the branch is reachable from the default branch (or `--abandon`); it also discards the builder's reviewers. It deletes only the local branch and worktree and keeps the remote branch; add `--delete-remote` only on the operator's explicit instruction. Run the open-PR check first.
 
 ## Backlog reference
 
@@ -105,5 +105,9 @@ A done researcher or brainstormer with a report can be followed by a successor: 
 
 ## What NOT to do
 
+- Don't delete a remote branch unless the operator explicitly names it; teardown and `--abandon` delete only the LOCAL branch and worktree.
+- Before tearing down or abandoning a builder whose branch is on the remote (`git ls-remote --heads origin <branch>`), look up open/active PRs with that source branch on the hosting platform (`gh`, `az repos`, or the REST API; don't assume GitHub); merged or abandoned PRs don't count. With an open PR, tell the operator, state that the local worktree/branch is what gets discarded, and tear down only on a yes. With none, proceed.
+- `--delete-remote` (the only way teardown runs `git push origin --delete`) needs the operator's explicit instruction; if the branch has an open PR, say first that deleting it breaks the PR's source branch.
+- Merging a PR on the operator's go-ahead (`chief-pr-merge.sh`) deleting its remote source branch is expected; the rule forbids deleting a remote branch via teardown or abandon (e.g. opening a PR, then tearing down before it merges).
 - Don't spawn a worker to answer something a quick read-only look settles. Any actual change to a project, however small, goes to a worker.
 - Don't invent scope in `--spec` beyond what `--intent` asks for.

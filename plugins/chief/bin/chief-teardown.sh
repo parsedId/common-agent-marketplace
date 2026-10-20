@@ -5,9 +5,10 @@
 # unconditionally - its deliverable is the report at $DATA/<id>/report.md,
 # outside the worktree, untouched either way.
 #
-# Discard also best-effort deletes the remote branch: a backstop for when
-# the work landed without a recorded PR/provider (e.g. merged by hand) and
-# for when provider-side deletion in pr_merge is unavailable or fails.
+# Teardown deletes only the LOCAL branch and worktree; the remote branch is
+# kept, --abandon included. --delete-remote is the only way to run
+# 'git push origin --delete <branch>'; it fails loudly if the push fails and
+# is never passed on to reviewers.
 #
 # A builder whose PR was squash- or rebase-merged has a branch that's never a
 # local ancestor of the default branch (both methods create new commits
@@ -18,7 +19,7 @@
 # Tearing down a builder also discards its linked reviewers, once the builder's
 # own teardown has succeeded; a refused builder leaves the reviewer alone.
 #
-# Usage: chief-teardown.sh <id> [--abandon]
+# Usage: chief-teardown.sh <id> [--abandon] [--delete-remote]
 set -euo pipefail
 
 . "$(dirname "${BASH_SOURCE[0]}")/lib/paths.sh"
@@ -30,16 +31,20 @@ set -euo pipefail
 fail() { echo "chief-teardown: $*" >&2; exit 1; }
 
 ID=${1:-}
-[ -n "$ID" ] || fail "usage: chief-teardown.sh <id> [--abandon]"
+[ -n "$ID" ] || fail "usage: chief-teardown.sh <id> [--abandon] [--delete-remote]"
 chief_meta_exists "$ID" || fail "no such task: $ID"
 shift
 
 ABANDON=0
-case "${1:-}" in
-  --abandon) ABANDON=1; shift ;;
-  "") ;;
-  *) fail "unknown argument: $1" ;;
-esac
+DELETE_REMOTE=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --abandon) ABANDON=1 ;;
+    --delete-remote) DELETE_REMOTE=1 ;;
+    *) fail "unknown argument: $1" ;;
+  esac
+  shift
+done
 
 PROJECT=$(chief_meta_require "$ID" project)
 BRANCH=$(chief_meta_require "$ID" branch)
@@ -47,11 +52,23 @@ WORKTREE=$(chief_meta_require "$ID" worktree)
 MODE=$(chief_meta_get "$ID" mode 2>/dev/null || true)
 
 _chief_discard() {  # <reason-for-the-echo-line>
+  local rc=0
+  git -C "$PROJECT" ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1 || rc=$?
+  if [ "$DELETE_REMOTE" -eq 1 ]; then
+    case "$rc" in
+      0) git -C "$PROJECT" push origin --delete "$BRANCH" >&2 \
+           || fail "could not delete remote branch $BRANCH; nothing was torn down"
+         echo "remote branch deleted: $BRANCH" ;;
+      2) echo "remote branch not deleted: $BRANCH not found on origin" ;;
+      *) fail "could not reach origin to delete remote branch $BRANCH; nothing was torn down" ;;
+    esac
+  elif [ "$rc" -eq 0 ]; then
+    echo "remote branch kept: $BRANCH"
+  fi
   backend_kill "$ID"
   backend_teardown "$ID" "$PROJECT" "$WORKTREE" || true
   git -C "$PROJECT" worktree remove --force "$WORKTREE" 2>/dev/null || rm -rf "$WORKTREE"
   git -C "$PROJECT" branch -D "$BRANCH" >/dev/null 2>&1 || true
-  git -C "$PROJECT" push origin --delete "$BRANCH" >/dev/null 2>&1 || true
   "$CHIEF_ROOT/bin/chief-backlog.sh" done "$ID" 2>/dev/null || true
   chief_meta_set "$ID" status torn-down
   echo "torn down: $ID ($1)"
