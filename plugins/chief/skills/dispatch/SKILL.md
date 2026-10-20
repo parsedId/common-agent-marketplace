@@ -57,7 +57,7 @@ Never automatic. Propose each step; the operator decides.
 4. Operator approves sending: `${CLAUDE_PLUGIN_ROOT}/bin/task/chief-send.sh <builder-id> "<blocking findings, the operator's additions, the report path>"`, then `chief-backlog.sh status <builder-id> in-flight`.
 5. Builder `done` again: say it was fixed in `<sha7>` and ask again (step 1). There is no round cap.
 6. Post findings to the PR only when the operator asks: see "Post a review".
-7. `chief-teardown.sh <builder-id>` also discards its reviewer: name both in the go-ahead. A reviewer alone: `chief-teardown.sh <reviewer-id>`, on the go-ahead.
+7. `chief-teardown.sh <builder-id>` also discards its reviewers: name them all in the go-ahead. A reviewer alone: `chief-teardown.sh <reviewer-id>`, on the go-ahead.
 
 ## After the operator responds
 
