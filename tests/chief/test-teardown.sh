@@ -159,8 +159,39 @@ spawn_pushed p-7 feat/p-7
 git -C "$WORK/project" remote set-url origin "$WORK/nowhere.git"
 assert_failure "teardown: --delete-remote fails loudly when it cannot reach the remote" -- \
   "$BIN/chief-teardown.sh" p-7 --abandon --delete-remote
+assert_file_exists "$CHIEF_HOME/worktrees/p-7" "teardown --delete-remote failure: worktree untouched"
+assert_contains "$("$BIN/chief-backlog.sh" show p-7)" "[in-flight]" "teardown --delete-remote failure: backlog item untouched"
 git -C "$WORK/project" remote set-url origin "$BARE"
 assert_success "teardown: --abandon clears it afterwards" -- "$BIN/chief-teardown.sh" p-7 --abandon
+
+# origin reachable but rejecting the delete: fails loudly, nothing torn down
+spawn_pushed p-10 feat/p-10
+printf '#!/bin/sh\nwhile read old new ref; do [ "$new" = 0000000000000000000000000000000000000000 ] && exit 1; done\nexit 0\n' > "$BARE/hooks/pre-receive"
+chmod +x "$BARE/hooks/pre-receive"
+assert_failure "teardown: --delete-remote fails loudly when the push is rejected" -- \
+  "$BIN/chief-teardown.sh" p-10 --abandon --delete-remote
+assert_file_exists "$CHIEF_HOME/worktrees/p-10" "teardown --delete-remote rejected: worktree untouched"
+assert_contains "$(git -C "$WORK/project" branch --list feat/p-10)" "feat/p-10" "teardown --delete-remote rejected: local branch untouched"
+rm "$BARE/hooks/pre-receive"
+assert_success "teardown: --abandon clears it afterwards (rejected push)" -- "$BIN/chief-teardown.sh" p-10 --abandon
+
+# researcher/reviewer discard path keeps the remote branch too
+assert_success "spawn: pushed researcher" -- \
+  timeout 10 "$BIN/chief-spawn.sh" p-8 "$WORK/project" --mode researcher --branch feat/p-8 --intent x
+git -C "$CHIEF_HOME/worktrees/p-8" push -q origin feat/p-8
+assert_success "teardown: researcher tears down" -- "$BIN/chief-teardown.sh" p-8
+assert_contains "$(git -C "$BARE" branch --list feat/p-8)" "feat/p-8" "teardown (researcher): remote branch kept"
+
+# --delete-remote on a builder is not passed on to its reviewer
+spawn_pushed p-9 feat/p-9
+assert_success "spawn: linked reviewer" -- \
+  timeout 10 "$BIN/chief-spawn.sh" p-9-review "$WORK/project" --mode reviewer --branch chore/review-p-9 --intent x
+git -C "$CHIEF_HOME/worktrees/p-9-review" push -q origin chore/review-p-9
+( . "$BIN/lib/paths.sh"; . "$BIN/lib/meta.sh"; chief_meta_set p-9 reviewer p-9-review )
+assert_success "teardown: builder with --delete-remote tears down" -- "$BIN/chief-teardown.sh" p-9 --abandon --delete-remote
+assert_eq "$(git -C "$BARE" branch --list feat/p-9)" "" "teardown: builder's remote branch deleted"
+assert_file_missing "$CHIEF_HOME/worktrees/p-9-review" "teardown: the reviewer was discarded too"
+assert_contains "$(git -C "$BARE" branch --list chore/review-p-9)" "chore/review-p-9" "teardown: --delete-remote not passed on to the reviewer"
 
 # --- a brainstormer discards like a researcher ---
 assert_success "spawn: brainstormer task" -- \

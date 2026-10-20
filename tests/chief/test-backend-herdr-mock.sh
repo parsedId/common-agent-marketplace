@@ -269,4 +269,23 @@ assert_success "an uppercase/dotted id maps to a valid name" -- grep -Eq '^[a-z]
 reset; backend_send "$LONG1" hi
 assert_contains "$(cat "$FAKE/calls")" "agent prompt $N1 <2B>" "backend_send uses the derived name"
 
+echo "[name] a long id is started, found and recovered under its derived name"
+chief_meta_set "$LONG1" agent claude
+chief_agent_use "$LONG1" >/dev/null 2>&1
+# stall, brief landed as a placeholder: Enter + wait, all by the derived name
+reset; cp "$FX/screen-pasted-placeholder.txt" "$FAKE/screen"; cp "$FX/screen-ready.txt" "$FAKE/keys.screen"
+echo "$STALLED" > "$FAKE/prompt.json"; echo 1 > "$FAKE/prompt.rc"; echo 0 > "$FAKE/wait.rc"
+_chief_herdr_prompt "$LONG1" "$BRIEF" >/dev/null 2>&1
+assert_eq "$?" "0" "long id: stall recovery succeeds"
+assert_contains "$(cat "$FAKE/calls")" "agent wait $N1 " "...waiting on the derived name"
+assert_eq "$(grep -c -- "^agent [a-z-]* $LONG1" "$FAKE/calls" || true)" "0" "...never addressing herdr by the raw id"
+# relaunch: starts the agent under the derived name
+mkproj; reset; L_WT="$CHIEF_HOME/worktrees/$LONG1"; git -C "$WORK/proj" worktree add -q -b "res/$LONG1" "$L_WT"
+chief_meta_set "$LONG1" project "$WORK/proj"; chief_meta_set "$LONG1" worktree "$L_WT"; chief_meta_set "$LONG1" mode researcher
+cp "$FX/screen-ready.txt" "$FAKE/screen"; echo "$WORKING" > "$FAKE/prompt.json"
+backend_relaunch "$LONG1" "$WORK/brief.md" >/dev/null 2>&1
+assert_eq "$?" "0" "long id: relaunch succeeds"
+assert_contains "$(cat "$FAKE/calls")" "agent start $N1 " "...starting the agent under the derived name"
+assert_eq "$(grep -c -- "^agent [a-z-]* $LONG1" "$FAKE/calls" || true)" "0" "...never addressing herdr by the raw id"
+
 harness_summary
