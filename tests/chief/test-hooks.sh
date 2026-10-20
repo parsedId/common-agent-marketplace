@@ -73,7 +73,45 @@ echo "---"
 cd "$CHIEF_HOME/worktrees/t-1" || exit 1
 out4=$("$SS")
 assert_eq "$out4" "{}" "session-start: stands down completely inside the builder's own worktree"
+CLAUDE_PROJECT_DIR="$CHIEF_HOME/worktrees/t-1" "$ARM" >/dev/null 2>&1
+assert_eq "$?" "0" "stop-watch-arm: a worker launched in its own worktree never arms"
 "$ARM" >/dev/null 2>&1
-assert_eq "$?" "0" "stop-watch-arm: stands down completely inside the builder's own worktree"
+assert_eq "$?" "0" "stop-watch-arm: no launch dir known falls back to the cwd, so a worker still stands down"
+
+# The primary session launched in the main checkout whose cwd drifted into a
+# task worktree must still arm.
+sed -i '/^notify-baseline=/d' "$CHIEF_HOME/tasks/t-1/meta"  # re-report t-1 to the fresh watcher
+arm_out6=$(CLAUDE_PROJECT_DIR="$WORK/configured/project" "$ARM" 2>&1); arm_rc6=$?
+assert_eq "$arm_rc6" "2" "stop-watch-arm: primary session with cwd in a linked worktree still arms"
+assert_contains "$arm_out6" "t-1" "stop-watch-arm: ...and reports the finished task"
+
+echo "---"
+# Skipped arms stay quiet for Chief's workers, even in a worktree outside
+# $WORKTREES (Orca picks its own path), and warn once for anyone else.
+echo "status=working" > "$CHIEF_HOME/tasks/t-1/meta.tmp"; cat "$CHIEF_HOME/tasks/t-1/meta" >> "$CHIEF_HOME/tasks/t-1/meta.tmp"
+mv "$CHIEF_HOME/tasks/t-1/meta.tmp" "$CHIEF_HOME/tasks/t-1/meta"
+git -C "$WORK/configured/project" worktree add -q -b ext "$WORK/ext"
+git -C "$WORK/configured/project" worktree add -q -b other "$WORK/other"
+mkdir -p "$CHIEF_HOME/tasks/e-1"
+printf 'status=working\nworktree=%s\n' "$WORK/ext" > "$CHIEF_HOME/tasks/e-1/meta"
+cd "$WORK/ext/" || exit 1
+arm_out7=$(CLAUDE_PROJECT_DIR="$WORK/ext" "$ARM" 2>&1); arm_rc7=$?
+assert_eq "$arm_rc7" "0" "stop-watch-arm: a worker in an external worktree skips (exit 0)"
+assert_eq "$arm_out7" "" "stop-watch-arm: ...silently"
+assert_eq "$([ -e "$CHIEF_HOME/state/.arm-skip-noted" ] && echo yes || echo no)" "no" "stop-watch-arm: ...without using up the notice"
+
+# A spawn in flight has no worktree recorded yet: stay silent too.
+printf 'status=spawning\nworktree=%s/pending\n' "$WORK" > "$CHIEF_HOME/tasks/e-1/meta"
+arm_out7b=$(CLAUDE_PROJECT_DIR="$WORK/other" "$ARM" 2>&1)
+assert_eq "$arm_out7b" "" "stop-watch-arm: an unrecorded linked worktree stays silent while a spawn is in flight"
+rm "$CHIEF_HOME/tasks/e-1/meta"
+
+# An unrelated linked worktree with tasks working: warn once, exit 0.
+arm_out7c=$(CLAUDE_PROJECT_DIR="$WORK/other" "$ARM" 2>&1); arm_rc7c=$?
+assert_eq "$arm_rc7c" "0" "stop-watch-arm: a skipped arm never wakes the model (exit 0)"
+assert_contains "$arm_out7c" "not armed" "stop-watch-arm: an unrelated linked worktree with tasks in flight is told on stderr"
+assert_eq "$([ -e "$CHIEF_HOME/state/.arm-skip-noted" ] && echo yes || echo no)" "yes" "stop-watch-arm: ...and the notice is recorded"
+arm_out8=$(CLAUDE_PROJECT_DIR="$WORK/other" "$ARM" 2>&1)
+assert_eq "$arm_out8" "" "stop-watch-arm: ...but only once"
 
 harness_summary
