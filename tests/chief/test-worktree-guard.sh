@@ -30,4 +30,10 @@ assert_eq "$?" "0" "a linked worktree IS reported as one"
 ( cd "$WORK" && chief_is_linked_worktree )
 assert_eq "$?" "1" "a plain non-git directory is not reported as a linked worktree"
 
+( cd "$WORK/main" && chief_is_linked_worktree "$WORK/linked" )
+assert_eq "$?" "0" "an explicit dir argument is judged instead of the cwd"
+
+( cd "$WORK/linked" && chief_is_linked_worktree "$WORK/main" )
+assert_eq "$?" "1" "an explicit main-checkout dir is not linked even when the cwd is"
+
 harness_summary
