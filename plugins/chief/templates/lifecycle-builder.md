@@ -9,7 +9,7 @@
 - [ ] landing path chosen - branch pushed and PR opened (host CLI), held with the URL (chief-backlog.sh hold <id> "PR: <url>")
 - [ ] PR approved (host CLI)
 - [ ] merged (host CLI)
-- [ ] torn down (chief-teardown.sh); this also discards its reviewer, so the go-ahead names both
+- [ ] torn down (chief-teardown.sh); this also discards its reviewers, so the go-ahead names them all
 
 ## Conditional (mark N/A if it never applied)
 - [ ] review findings posted to the PR, only when the operator asked (host CLI)
