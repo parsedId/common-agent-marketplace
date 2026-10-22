@@ -2,7 +2,7 @@
   "name": "common-agent-marketplace",
   "description": "A marketplace of Claude Code plugins covering a range of skills and agents. Manifests and skills are also readable directly by GitHub Copilot CLI.",
   "metadata": {
-    "version": "0.1.1"
+    "version": "0.1.2"
   },
   "owner": {
     "name": "Jubast",
@@ -42,7 +42,7 @@
     {
       "name": "chief",
       "description": "A lightweight supervisor for Claude Code: dispatches work to isolated builder/researcher/reviewer/brainstormer agents over the herdr or Orca backend, tracks a plain-markdown backlog, and supervises them with a near-zero-token watch loop.",
-      "version": "0.9.1",
+      "version": "0.9.2",
       "source": "./plugins/chief/"
     }
   ]
