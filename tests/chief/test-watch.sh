@@ -147,4 +147,22 @@ assert_eq "$rc:$out" "124:" "stale builder active again: watch stays silent"
 stale_ago 250
 assert_contains "$(watch_st)" "st-1: state: stale" "stale again after activity: watch wakes Chief again"
 
+# --- agent flip: a changed [agent: ...] part is not a state change ---
+assert_success "spawn: builder for the agent-flip scenario" -- \
+  timeout 10 "$BIN/chief-spawn.sh" ag-1 "$WORK/project" --mode builder --branch feat/ag-1 --intent "flip"
+echo "done: shipped" >> "$CHIEF_HOME/tasks/ag-1/status"
+watch_ag() { CHIEF_POLL=1 timeout 3 "$BIN/chief-watch.sh"; }
+set_ag() {
+  local m="$CHIEF_HOME/tasks/ag-1/meta"
+  grep -vE '^(agent|model)=' "$m" > "$m.tmp"; mv "$m.tmp" "$m"
+  printf 'agent=claude\nmodel=%s\n' "$1" >> "$m"
+}
+set_ag ""
+assert_contains "$(watch_ag)" "ag-1: state: done" "agent flip: first delivery"
+set_ag sonnet
+out=$(watch_ag); rc=$?
+assert_eq "$rc:$out" "124:" "agent flip: same line with another agent stays silent"
+echo "done: shipped again" >> "$CHIEF_HOME/tasks/ag-1/status"
+assert_contains "$(watch_ag)" "ag-1: state: done" "agent flip: a different state still delivers"
+
 harness_summary

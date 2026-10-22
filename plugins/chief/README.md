@@ -13,7 +13,7 @@ Inspired by [Firstmate](https://github.com/kunchenguid/firstmate), which does th
 - `skills/using-chief` - the identity/job-description skill, force-injected every session via the `SessionStart` hook so Chief always knows its role without being asked.
 - `skills/setup` - one-time CHIEF_HOME config (backend choice + gitignoring `.chief/`); only relevant before `.chief/config/backend` exists, which the `SessionStart` digest flags explicitly.
 - `skills/dispatch` - the operator-facing entry point; load this to hand off work.
-- `hooks/` - `SessionStart` (injects `using-chief`, a configuration status line, and a backlog/in-flight digest) and `Stop` (the token-saving watch arm; `chief-watch.sh` wakes you once per state change - the delivered line is kept as the task's `notify-baseline`, and a stale alert's idle counter doesn't count as a change). Both stand down entirely inside a spawned builder's own worktree - see `worktree.sh`.
+- `hooks/` - `SessionStart` (injects `using-chief`, a configuration status line, and a backlog/in-flight digest) and `Stop` (the token-saving watch arm; `chief-watch.sh` wakes you once per state change - the delivered line is kept as the task's `notify-baseline`, and a stale alert's idle counter and the `[agent: ...]` part don't count as a change). Both stand down entirely inside a spawned builder's own worktree - see `worktree.sh`.
 
 The `Stop` hook decides this from the directory the session was launched in (`CLAUDE_PROJECT_DIR`), not its current directory, so a primary session whose cwd drifted into a task worktree still arms. A session launched in a linked worktree that is not one of Chief's workers skips and, when a task is working and no task is spawning, says so once on stderr (exit 0, so it never wakes the model).
 
