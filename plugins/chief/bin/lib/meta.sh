@@ -28,10 +28,10 @@ chief_meta_set() {
   mv "$tmp" "$file"
 }
 
-# chief_notify_line <crew-state line> -> the line minus its idle counter, so a
-# stale alert compares equal to itself across polls.
+# chief_notify_line <crew-state line> -> the line minus its idle counter and
+# [agent: ...] part, so a stale alert or an agent[:model] flip compares equal.
 chief_notify_line() {
-  printf '%s\n' "$1" | sed -E 's/, no turn activity for [0-9]+s//'
+  printf '%s\n' "$1" | sed -E 's/, no turn activity for [0-9]+s//; s/ \[agent: [^]]*\]//'
 }
 
 # chief_meta_agent <id> -> agent[:model]
