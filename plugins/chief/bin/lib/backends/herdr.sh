@@ -276,12 +276,13 @@ backend_kill() {
 # _chief_herdr_project_in_use <id> <project-dir> - another live task of the
 # project exists (any task but <id> whose meta is not torn-down)
 _chief_herdr_project_in_use() {
-  local m other
+  local m other want
+  want=$(realpath -m "$2")
   for m in "$TASKS"/*/meta; do
     [ -f "$m" ] || continue
     other=$(basename "$(dirname "$m")")
     [ "$other" != "$1" ] || continue
-    [ "$(chief_meta_get "$other" project 2>/dev/null)" = "$2" ] || continue
+    [ "$(realpath -m "$(chief_meta_get "$other" project 2>/dev/null)")" = "$want" ] || continue
     [ "$(chief_meta_get "$other" status 2>/dev/null)" != torn-down ] && return 0
   done
   return 1

@@ -272,6 +272,12 @@ assert_eq "$(closed_workspaces)" "" "another live task of the project -> nothing
 chief_meta_set t2 status torn-down
 backend_teardown t1 "$PW" "$CHIEF_HOME/worktrees/t1"
 assert_eq "$(closed_workspaces)" "w0 " "last live task (the rest torn down, other projects ignored) -> only the project's workspace closes"
+ln -sfn "$PW" "$WORK/proj-link"
+chief_meta_set t2 project "$WORK/proj-link"; chief_meta_set t2 status working
+reset; home_ws
+backend_teardown t1 "$PW" "$CHIEF_HOME/worktrees/t1"
+assert_eq "$(closed_workspaces)" "" "a live task naming the project via a symlink -> nothing closed"
+chief_meta_set t2 status torn-down
 reset; home_ws
 backend_teardown t1 "$(dirname "$CHIEF_HOME")" "$CHIEF_HOME/worktrees/t1"
 assert_eq "$(closed_workspaces)" "" "a project dir that is the Chief home's workspace -> never closed"
