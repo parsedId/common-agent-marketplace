@@ -273,9 +273,40 @@ backend_kill() {
   herdr workspace close "$(_chief_herdr_workspace_id "$pane_id")" >/dev/null 2>&1 || true
 }
 
-# backend_teardown <id> <project-dir> <worktree> - herdr has nothing to forget.
+# _chief_herdr_project_in_use <id> <project-dir> - another live task of the
+# project exists (any task but <id> whose meta is not torn-down)
+_chief_herdr_project_in_use() {
+  local m other
+  for m in "$TASKS"/*/meta; do
+    [ -f "$m" ] || continue
+    other=$(basename "$(dirname "$m")")
+    [ "$other" != "$1" ] || continue
+    [ "$(chief_meta_get "$other" project 2>/dev/null)" = "$2" ] || continue
+    [ "$(chief_meta_get "$other" status 2>/dev/null)" != torn-down ] && return 0
+  done
+  return 1
+}
+
+# _chief_herdr_close_project_workspace <project-dir> - closes the workspace
+# whose checkout is exactly <project-dir>, never the Chief home's own.
+_chief_herdr_close_project_workspace() {
+  local project=$1 real home
+  real=$(realpath -m "$project"); home=$(realpath -m "$CHIEF_HOME")
+  [ "$real" != "$home" ] && [ "$real" != "$(dirname "$home")" ] || return 0
+  herdr workspace list 2>/dev/null \
+    | jq -r --arg a "$project" --arg b "$real" \
+        '.result.workspaces[]? | select(.worktree.checkout_path as $p | $p != null and ($p == $a or $p == $b)) | .workspace_id' \
+    | while read -r w; do
+        herdr workspace close "$w" >/dev/null 2>&1 \
+          || echo "chief-backend-herdr: could not close project workspace $w ($project)" >&2
+      done || true
+}
+
+# backend_teardown <id> <project-dir> <worktree> - releases the agent's trust
+# and closes the project's primary workspace once no other live task uses it.
 backend_teardown() {
   chief_agent_release "$1" "$3"
+  _chief_herdr_project_in_use "$1" "$2" || _chief_herdr_close_project_workspace "$2"
 }
 
 backend_relaunch() {

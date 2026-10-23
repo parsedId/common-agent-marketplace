@@ -257,6 +257,25 @@ assert_eq "$(chief_meta_get r1 endpoint)" "herdr:w9:p1" "...and records the endp
 assert_contains "$(cat "$FAKE/calls")" "--label r1 " "...reopening its workspace labeled with the plain id"
 assert_eq "$(chief_meta_get r1 label 2>/dev/null || echo none)" "none" "...recording no label"
 
+echo "[teardown] the project's primary workspace closes with its last live task"
+rm -rf "$CHIEF_HOME/tasks"; mkdir -p "$CHIEF_HOME/tasks"
+PW="$WORK/proj"
+home_ws() { jq -n --arg proj "$PW" --arg home "$(dirname "$CHIEF_HOME")" '{result:{workspaces:[
+  {workspace_id:"w0",label:"proj",worktree:{checkout_path:$proj,is_linked_worktree:false}},
+  {workspace_id:"w7",label:"home",worktree:{checkout_path:$home,is_linked_worktree:false}},
+  {workspace_id:"w8",label:"proj-sub",worktree:{checkout_path:($proj + "/sub"),is_linked_worktree:false}}]}}' > "$FAKE/workspaces.json"; }
+for t in t1 t2; do chief_meta_set $t project "$PW"; chief_meta_set $t status working; chief_meta_set $t agent claude; done
+chief_meta_set o1 project "$WORK/other"; chief_meta_set o1 status working
+reset; home_ws
+backend_teardown t1 "$PW" "$CHIEF_HOME/worktrees/t1"
+assert_eq "$(closed_workspaces)" "" "another live task of the project -> nothing closed"
+chief_meta_set t2 status torn-down
+backend_teardown t1 "$PW" "$CHIEF_HOME/worktrees/t1"
+assert_eq "$(closed_workspaces)" "w0 " "last live task (the rest torn down, other projects ignored) -> only the project's workspace closes"
+reset; home_ws
+backend_teardown t1 "$(dirname "$CHIEF_HOME")" "$CHIEF_HOME/worktrees/t1"
+assert_eq "$(closed_workspaces)" "" "a project dir that is the Chief home's workspace -> never closed"
+
 echo "[name] herdr agent names are valid, deterministic and unique"
 LONG1=build-dotnet-common-keycloak-by-name-review-copilot-gpt-6-1-sol
 LONG2=build-dotnet-common-keycloak-by-name-review-copilot-gpt-6-1-sul
