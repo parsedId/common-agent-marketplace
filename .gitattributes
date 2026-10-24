@@ -1,0 +1,2 @@
+# Shell scripts and the devcontainer must stay LF on Windows checkouts.
+* text=auto eol=lf
