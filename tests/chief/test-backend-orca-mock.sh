@@ -341,7 +341,7 @@ backend_spawn_cleanup "t-orca-ready" "$WORK/project" "chief/t-orca-ready"
 # command override (recorded in meta by chief-spawn.sh).
 chief_meta_set t-orca-cx agent codex; chief_meta_set t-orca-cx model gpt-5
 : > "$ORCA_MOCK_LOG"
-ORCA_MOCK_NO_BYPASS=1 ORCA_MOCK_SCREEN_TEXT="  100% context left" backend_spawn "t-orca-cx" "$WORK/project" "$BRIEF" "chief/t-orca-cx" >/dev/null 2>&1
+ORCA_MOCK_NO_BYPASS=1 ORCA_MOCK_SCREEN_TEXT="  ← for agents · ? for shortcuts" backend_spawn "t-orca-cx" "$WORK/project" "$BRIEF" "chief/t-orca-cx" >/dev/null 2>&1
 assert_eq "$?" "0" "backend_spawn succeeds for a codex task once its own ready text shows"
 assert_contains "$(cat "$ORCA_MOCK_LOG")" "--command codex --dangerously-bypass-approvals-and-sandbox --model gpt-5 --json" "backend_spawn launches the task's agent with its model"
 backend_spawn_cleanup "t-orca-cx" "$WORK/project" "chief/t-orca-cx"
