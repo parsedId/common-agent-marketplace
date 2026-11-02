@@ -21,13 +21,11 @@ echo "========================================"
 echo ""
 
 # Mock-backend workers (argv0 chief-mock-*) this run started are logged to
-# CHIEF_MOCK_RUN_LOG (directly, or via each test's harness reap); any still
-# alive after the sweep leaked. Other runs' workers are never in the log.
+# CHIEF_MOCK_RUN_LOG by mock.sh at spawn time; any still alive after the sweep
+# leaked. Other runs' workers are never in the log.
 source "$SCRIPT_DIR/lib/harness.sh"
 CHIEF_MOCK_RUN_LOG=$(mktemp)
 export CHIEF_MOCK_RUN_LOG
-CHIEF_MOCK_PID_LOG=$CHIEF_MOCK_RUN_LOG
-export CHIEF_MOCK_PID_LOG
 
 total_files=0
 failed_files=0

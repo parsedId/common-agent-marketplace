@@ -25,4 +25,21 @@ kill "$OWN"; wait "$OWN" 2>/dev/null
 assert_eq "$(harness_leaked_mock_pids "$WORK/log")" "" "a logged worker that exited is not reported"
 assert_eq "$(harness_leaked_mock_pids "$WORK/missing")" "" "a missing log reports nothing"
 
+# Through the runner: a test that drops its EXIT trap and leaves a worker.
+RUN="$WORK/run"; mkdir -p "$RUN/lib"
+cp "$TEST_DIR/run-tests.sh" "$RUN/"; cp "$TEST_DIR/lib/harness.sh" "$RUN/lib/"
+cat > "$RUN/test-leaky.sh" <<EOF
+. "$TEST_DIR/lib/harness.sh"
+. "$TEST_DIR/../../plugins/chief/bin/lib/backends/mock.sh"
+chief_agent_use() { :; }; agent_prepare() { :; }
+chief_task_path() { echo "$WORK/\$1.\$2"; }; chief_meta_get() { :; }
+harness_trap ':'
+backend_relaunch leaky-run /dev/null
+trap - EXIT
+exit 0
+EOF
+OUT=$(bash "$RUN/run-tests.sh" 2>&1); RC=$?
+assert_contains "$OUT" "mock workers left behind: 1" "the runner reports a worker left by a test that dropped its trap"
+assert_eq "$((RC != 0))" "1" "the runner fails on that leak"
+
 harness_summary

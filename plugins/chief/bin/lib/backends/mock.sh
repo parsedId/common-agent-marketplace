@@ -12,7 +12,8 @@
 # placeholder process whose pid is recorded in tasks/<id>/term.pid.
 #
 # $CHIEF_MOCK_PID_LOG, if set, is a file every placeholder pid is appended to,
-# so a test harness can reap exactly the workers it started.
+# so a test harness can reap exactly the workers it started. Likewise
+# $CHIEF_MOCK_RUN_LOG (run-tests.sh's run-wide log), written at spawn time.
 #
 # CHIEF_MOCK_SPAWN_FAIL=1, CHIEF_MOCK_SPAWN_FAIL_ID=<id> and CHIEF_MOCK_SPAWN_MALFORMED=1 are test-only
 # failure injectors (unset in normal use) so chief-spawn.sh's own failure
@@ -43,6 +44,7 @@ backend_spawn() {
   disown
   echo $! > "$(chief_task_path "$id" term.pid)"
   [ -z "${CHIEF_MOCK_PID_LOG:-}" ] || echo $! >> "$CHIEF_MOCK_PID_LOG"
+  [ -z "${CHIEF_MOCK_RUN_LOG:-}" ] || echo $! >> "$CHIEF_MOCK_RUN_LOG"
   if [ "${CHIEF_MOCK_SPAWN_FAIL:-0}" = "1" ] || [ "${CHIEF_MOCK_SPAWN_FAIL_ID:-}" = "$id" ]; then
     echo "[mock] simulated backend_spawn failure for $id" >&2
     return 1
@@ -94,6 +96,7 @@ backend_relaunch() {
   disown
   echo $! > "$(chief_task_path "$id" term.pid)"
   [ -z "${CHIEF_MOCK_PID_LOG:-}" ] || echo $! >> "$CHIEF_MOCK_PID_LOG"
+  [ -z "${CHIEF_MOCK_RUN_LOG:-}" ] || echo $! >> "$CHIEF_MOCK_RUN_LOG"
 }
 
 backend_teardown() {

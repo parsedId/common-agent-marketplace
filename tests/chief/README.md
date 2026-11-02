@@ -16,7 +16,7 @@ opts into a real herdr/orca install and a real agent turn - see below.
 
 ## Cleanup
 
-Tests that use the mock backend set their cleanup with `harness_trap` (`lib/harness.sh`): on EXIT/INT/TERM/HUP it kills the `chief-mock-*` workers the test started (found via the pid log `mock.sh` appends to, never by name), then runs the test's own cleanup. `run-tests.sh` counts `chief-mock-*` processes before and after the sweep and fails if any are new.
+Tests that use the mock backend set their cleanup with `harness_trap` (`lib/harness.sh`): on EXIT/INT/TERM/HUP it kills the `chief-mock-*` workers the test started (found via the pid log `mock.sh` appends to, never by name), then runs the test's own cleanup. `mock.sh` also logs each worker pid to `run-tests.sh`'s run-wide `CHIEF_MOCK_RUN_LOG` at spawn time; the runner fails if any logged worker is still alive after the sweep. Workers from other runs are never in that log, so they are ignored.
 
 ## Running
 
