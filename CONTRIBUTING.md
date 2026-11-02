@@ -19,7 +19,8 @@ plugins/<new-plugin-name>/
 1. Create `plugins/<new-plugin-name>/.claude-plugin/plugin.json` — `name`
    (kebab-case, matches the directory), `description`, `version`, `author`
    (the marketplace owner unless the plugin has a different author),
-   `license`.
+   `license`. A new plugin starts at its initial `version`; don't bump it
+   afterwards in the PR.
 2. Add the plugin's skill(s) and/or agent(s), following the conventions
    below.
 3. Write `plugins/<new-plugin-name>/README.md` describing the plugin.
@@ -35,9 +36,11 @@ plugins/<new-plugin-name>/
 marketplace as a whole. The tag `v<version>` pins every plugin version
 listed in that file at that commit.
 
-- Bump `metadata.version` in the same PR as any plugin version change.
-- While 0.x: bump the minor for plugin additions, removals, or breaking
-  changes; bump the patch for any other plugin bump.
+- Don't bump plugin versions or `metadata.version` in a PR, including
+  downstream PRs. The maintainers (upstream) decide when to release a
+  version and bump it then.
+- Maintainers, while 0.x: bump the minor for plugin additions, removals,
+  or breaking changes; bump the patch for any other plugin bump.
 - Don't tag by hand. The `tag-marketplace` workflow creates `v<version>`
   on merge to `main` if it doesn't exist yet.
 
