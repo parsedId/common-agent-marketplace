@@ -82,7 +82,7 @@ assert_failure() {  # <test-name> -- <command...>  (asserts nonzero exit)
 }
 
 assert_contains() {  # <haystack> <needle> <test-name>
-  if printf '%s' "$1" | grep -qF -- "$2"; then
+  if grep -qF -- "$2" <<< "$1"; then
     echo "  [PASS] $3"
     PASS_COUNT=$((PASS_COUNT + 1))
   else
@@ -95,7 +95,7 @@ assert_contains() {  # <haystack> <needle> <test-name>
 }
 
 assert_not_contains() {  # <haystack> <needle> <test-name>
-  if printf '%s' "$1" | grep -qF -- "$2"; then
+  if grep -qF -- "$2" <<< "$1"; then
     echo "  [FAIL] $3"
     echo "    did not expect to find: $2"
     echo "    in:"

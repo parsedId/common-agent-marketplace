@@ -36,4 +36,10 @@ while IFS= read -r -d '' f; do
   fi
 done < <(find "$CHIEF/bin" -maxdepth 1 -name '*.sh' -print0; find "$CHIEF/bin/task" -maxdepth 1 -name '*.sh' -print0; find "$CHIEF/hooks" -maxdepth 1 -name '*.sh' -print0)
 
+# a large haystack must not SIGPIPE the printf under pipefail (a false FAIL, or a false PASS of assert_not_contains)
+BIG="needle
+$(head -c 3000000 /dev/zero | tr '\0' x | fold -w 80)"
+out=$(assert_contains "$BIG" needle t); assert_contains "$out" "[PASS] t" "harness: assert_contains passes on a large haystack"
+out=$(assert_not_contains "$BIG" needle t); assert_contains "$out" "[FAIL] t" "harness: assert_not_contains fails on a large haystack"
+
 harness_summary
