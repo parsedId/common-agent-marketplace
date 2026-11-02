@@ -85,8 +85,9 @@ else
   for RID in $LINKED; do
     REPORT=$(chief_task_path "$RID" report.md)
     ARCHIVE_TO="${REPORT%.md}.round-$((ROUND - 1)).md"
-    # armed_round marks a finished re-arm; archiving alone does not, so a retry redoes the unfinished steps.
-    if [ "$(chief_meta_get "$RID" armed_round 2>/dev/null)" = "$ROUND" ]; then
+    # armed_round=<round>@<sha> marks a finished re-arm; archiving alone does not, so a retry redoes the
+    # unfinished steps. A new commit restarts the round for every reviewer, so all review the same SHA.
+    if [ "$(chief_meta_get "$RID" armed_round 2>/dev/null)" = "$ROUND@$SHA" ]; then
       echo "chief-review: $RID already re-armed for round $ROUND, skipped" >&2; continue
     fi
     # An archived report is never overwritten.
@@ -98,7 +99,7 @@ $priors"
     "$CHIEF_ROOT/bin/chief-backlog.sh" status "$RID" in-flight >/dev/null
     echo "working: round $ROUND requested" >> "$(chief_task_path "$RID" status)"
     touch "$(chief_task_path "$RID" turn-ended)"
-    chief_meta_set "$RID" armed_round "$ROUND"
+    chief_meta_set "$RID" armed_round "$ROUND@$SHA"
   done
   IDS=$LINKED
   chief_meta_set "$BID" review_round "$ROUND"

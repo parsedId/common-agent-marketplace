@@ -263,6 +263,24 @@ assert_contains "$(cat "$TASKS/b-12-rv-codex/inbox/001.msg")" "Review round 2" "
 assert_eq "$(cat "$TASKS/b-12-rv-codex/report.round-1.md")" "Verdict: PASS" "failed send: the archive is intact"
 assert_eq "$(ls "$TASKS/b-12-rv-sonnet/inbox" | grep -c msg)" "1" "failed send: the armed reviewer got one message"
 
+# a new commit after a partly failed round restarts it for every reviewer at the new SHA
+printf '[reviewer]\nstrategy = all\nclaude:sonnet\ncodex\n' > "$CHIEF_HOME/config/agents"
+newb b-13
+timeout 30 "$RV" b-13 >/dev/null 2>&1
+rm "$CHIEF_HOME/config/agents"
+for r in $(chief_meta_get b-13 reviewer); do printf 'Verdict: PASS\n' > "$TASKS/$r/report.md"; echo "done: round 1 PASS @x" >> "$TASKS/$r/status"; done
+SA=$(commit b-13 b13a.txt); echo "done: ${SA:0:7} a" >> "$TASKS/b-13/status"
+mkdir -p "$TASKS/b-13-rv-codex/inbox"; chmod 555 "$TASKS/b-13-rv-codex/inbox"
+assert_failure "restart: round 2 at A fails midway" -- timeout 30 "$RV" b-13
+chmod 755 "$TASKS/b-13-rv-codex/inbox"
+SB=$(commit b-13 b13b.txt); echo "done: ${SB:0:7} b" >> "$TASKS/b-13/status"
+out=$(timeout 30 "$RV" b-13 2>&1)
+assert_contains "$out" "round 2 of b-13 @${SB:0:7}" "restart: the retry at B completes round 2"
+assert_not_contains "$out" "already re-armed" "restart: no reviewer is skipped at a new SHA"
+assert_contains "$(cat "$TASKS/b-13-rv-sonnet/inbox/002.msg")" "Pinned SHA: $SB" "restart: the reviewer armed at A is re-armed at B"
+assert_contains "$(cat "$TASKS/b-13-rv-codex/inbox/001.msg")" "Pinned SHA: $SB" "restart: the other reviewer gets B too"
+assert_eq "$(chief_meta_get b-13 review_sha)" "$SB" "restart: review_sha is B"
+
 # a long model name yields a valid, short id
 printf '[reviewer]\nstrategy = all\ncopilot:gpt-6.1-sol-with-a-very-long-model-name\n' > "$CHIEF_HOME/config/agents"
 newb build-keycloak-name-extra-wo
