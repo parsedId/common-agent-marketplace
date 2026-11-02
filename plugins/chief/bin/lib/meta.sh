@@ -32,8 +32,8 @@ chief_meta_set() {
 # everything from " [mode: " on (mode, agent, reviewer/for tags), so a stale
 # alert or a changed trailing tag compares equal.
 chief_notify_line() {
-  local line=${1//$'\n'/}
-  line=$(printf '%s' "$line" | sed -E 's/, no turn activity for [0-9]+s//')
+  local line
+  line=$(printf '%s' "$1" | sed -E 's/, no turn activity for [0-9]+s//')
   printf '%s\n' "${line%% \[mode: *}"
 }
 
