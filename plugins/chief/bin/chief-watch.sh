@@ -41,7 +41,7 @@ while true; do
         # Notify once per state change: the delivered line is the baseline,
         # which a resumed held/done task also starts with (chief-backlog.sh).
         norm=$(chief_notify_line "$line")
-        [ "$norm" = "$baseline" ] && continue
+        [ "$norm" = "$(chief_notify_line "$baseline")" ] && continue
         chief_meta_set "$id" notify-baseline "$norm"
         echo "$id: $line"
         exit 0

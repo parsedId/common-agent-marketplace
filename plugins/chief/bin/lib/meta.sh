@@ -29,9 +29,12 @@ chief_meta_set() {
 }
 
 # chief_notify_line <crew-state line> -> the line minus its idle counter and
-# [agent: ...] part, so a stale alert or an agent[:model] flip compares equal.
+# everything from " [mode: " on (mode, agent, reviewer/for tags), so a stale
+# alert or a changed trailing tag compares equal.
 chief_notify_line() {
-  printf '%s\n' "$1" | sed -E 's/, no turn activity for [0-9]+s//; s/ \[agent: [^]]*\]//'
+  local line=${1//$'\n'/}
+  line=$(printf '%s' "$line" | sed -E 's/, no turn activity for [0-9]+s//')
+  printf '%s\n' "${line%% \[mode: *}"
 }
 
 # chief_meta_agent <id> -> agent[:model]

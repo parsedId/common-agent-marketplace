@@ -157,4 +157,21 @@ assert_eq "$rc:$out" "124:" "agent flip: same line with another agent stays sile
 echo "done: shipped again" >> "$CHIEF_HOME/tasks/ag-1/status"
 assert_contains "$(watch_ag)" "ag-1: state: done" "agent flip: a different state still delivers"
 
+# --- reviewer tag: a trailing [reviewer: id] is not a state change ---
+assert_success "spawn: builder for the reviewer-tag scenario" -- \
+  timeout 10 "$BIN/chief-spawn.sh" rv-1 "$WORK/project" --mode builder --branch feat/rv-1 --intent "tag"
+echo "done: shipped" >> "$CHIEF_HOME/tasks/rv-1/status"
+watch_rv() { CHIEF_POLL=1 timeout 3 "$BIN/chief-watch.sh"; }
+assert_contains "$(watch_rv)" "rv-1: state: done" "reviewer tag: first delivery"
+printf 'reviewer=rv-1-review\n' >> "$CHIEF_HOME/tasks/rv-1/meta"
+out=$(watch_rv); rc=$?
+assert_eq "$rc:$out" "124:" "reviewer tag: same line with a reviewer suffix stays silent"
+
+# --- old-format baseline (with the [agent: ...] tag) still matches ---
+m="$CHIEF_HOME/tasks/rv-1/meta"
+grep -v '^notify-baseline=' "$m" > "$m.tmp"; mv "$m.tmp" "$m"
+printf 'notify-baseline=state: done · shipped [mode: builder] [agent: claude]\n' >> "$m"
+out=$(watch_rv); rc=$?
+assert_eq "$rc:$out" "124:" "old-format baseline: the stored [agent: ...] tag still matches"
+
 harness_summary
