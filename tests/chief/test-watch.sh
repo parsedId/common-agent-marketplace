@@ -174,4 +174,122 @@ printf 'notify-baseline=state: done · shipped [mode: builder] [agent: claude]\n
 out=$(watch_rv); rc=$?
 assert_eq "$rc:$out" "124:" "old-format baseline: the stored [agent: ...] tag still matches"
 
+# Activity that only touches turn-ended (no new status line) also starts a new
+# stale episode; polling the same episode again stays silent.
+touch "$CHIEF_HOME/tasks/st-1/turn-ended"
+out=$(watch_st); rc=$?
+assert_eq "$rc:$out" "124:" "touch-only activity: watch stays silent"
+stale_ago 260
+assert_contains "$(watch_st)" "st-1: state: stale" "stale again after touch-only activity: watch wakes Chief again"
+out=$(watch_st); rc=$?
+assert_eq "$rc:$out" "124:" "same stale episode polled again: delivered once"
+
+# --- single instance + exactly-once delivery (atomic claims) ---
+export CHIEF_POLL=1
+ARM="$REPO_ROOT/plugins/chief/hooks/stop-watch-arm.sh"
+OWNERF="$CHIEF_HOME/state/watch.owner"
+owner_is_not() { [ -s "$OWNERF" ] && [ "$(cat "$OWNERF")" != "$1" ]; }
+wait_until() { local n=0; until "$@"; do n=$((n + 1)); [ "$n" -ge 100 ] && return 1; sleep 0.1; done; }
+line() { echo "t-2: state: done · $1 [mode: builder] [agent: claude]"; }
+
+"$BIN/chief-backlog.sh" status t-2 in-flight >/dev/null
+echo "done: race" >> "$CHIEF_HOME/tasks/t-2/status"
+for i in 1 2 3; do ( timeout 6 "$BIN/chief-watch.sh" > "$WORK/race-$i.out" 2>&1 ) & done
+wait
+assert_eq "$(cat "$WORK"/race-*.out)" "$(line race)" "racing watchers: the change is delivered exactly once"
+
+# An older watcher exits silently when a newer one arms, also through the hook.
+echo "working: older exits" >> "$CHIEF_HOME/tasks/t-2/status"
+rm -f "$OWNERF"
+( timeout 10 "$BIN/chief-watch.sh" > "$WORK/old.out" 2>&1; echo "rc=$?" >> "$WORK/old.out" ) &
+wait_until owner_is_not ""
+old_owner=$(cat "$OWNERF")
+( CLAUDE_PROJECT_DIR="$WORK/project" timeout 10 "$ARM" > "$WORK/new.out" 2>&1; echo "rc=$?" >> "$WORK/new.out" ) &
+wait_until owner_is_not "$old_owner"
+echo "done: older exits" >> "$CHIEF_HOME/tasks/t-2/status"
+wait
+assert_eq "$(cat "$WORK/old.out")" "rc=0" "older watcher exits silently (0, no output)"
+assert_eq "$(cat "$WORK/new.out")" "chief watcher: $(line 'older exits')
+rc=2" "the newer watcher, armed by the hook, delivers the change"
+
+# A displaced watcher that read an older state and runs its clear path must not
+# cause a re-delivery.
+echo "working: gated" >> "$CHIEF_HOME/tasks/t-2/status"
+cp -r "$REPO_ROOT/plugins/chief" "$WORK/plugin-copy"
+cat > "$WORK/plugin-copy/bin/task/chief-crew-state.sh" <<GATE
+#!/usr/bin/env bash
+touch "$WORK/gate-entered"
+while [ ! -e "$WORK/gate-release" ]; do sleep 0.1; done
+echo "state: working"
+GATE
+( timeout 10 "$WORK/plugin-copy/bin/chief-watch.sh" > "$WORK/gated.out" 2>&1; echo "rc=$?" >> "$WORK/gated.out" ) &
+wait_until test -e "$WORK/gate-entered"
+echo "done: gated" >> "$CHIEF_HOME/tasks/t-2/status"
+assert_eq "$(timeout 10 "$BIN/chief-watch.sh")" "$(line gated)" "replacement watcher delivers while the old one is gated"
+touch "$WORK/gate-release"
+wait
+assert_eq "$(cat "$WORK/gated.out")" "rc=0" "displaced watcher exits silently after its gate"
+sed -i '/^notify-baseline=/d' "$CHIEF_HOME/tasks/t-2/meta"   # as if the clear path ran
+assert_eq "$(timeout 3 "$BIN/chief-watch.sh"; echo "rc=$?")" "rc=124" \
+  "baseline cleared by a stale watcher: a later watcher does not re-deliver"
+
+# A watcher paused after its ownership check, just before building its claim,
+# with a status line appended meanwhile, must not re-deliver what the
+# replacement delivered.
+echo "done: snap" >> "$CHIEF_HOME/tasks/t-2/status"
+rm -f "$WORK/gate-entered" "$WORK/gate-release"
+mkdir "$WORK/gatebin"
+cat > "$WORK/gatebin/cksum" <<GATE
+#!/usr/bin/env bash
+touch "$WORK/gate-entered"
+while [ ! -e "$WORK/gate-release" ]; do sleep 0.1; done
+exec $(command -v cksum) "\$@"
+GATE
+chmod +x "$WORK/gatebin/cksum"
+( PATH="$WORK/gatebin:$PATH" timeout 10 "$BIN/chief-watch.sh" > "$WORK/snap-a.out" 2>&1; echo "rc=$?" >> "$WORK/snap-a.out" ) &
+wait_until test -e "$WORK/gate-entered"
+assert_eq "$(timeout 10 "$BIN/chief-watch.sh")" "$(line snap)" "replacement delivers the event while the old watcher is paused"
+echo "working: moved on" >> "$CHIEF_HOME/tasks/t-2/status"
+touch "$WORK/gate-release"
+wait
+assert_eq "$(cat "$WORK/snap-a.out")" "rc=0" "paused watcher with a stale snapshot does not deliver a duplicate"
+
+# A watcher that wins the claim and is displaced before printing still
+# delivers: the claim alone makes delivery exactly-once.
+echo "done: claimed" >> "$CHIEF_HOME/tasks/t-2/status"
+rm -f "$WORK/gate-entered" "$WORK/gate-release"; mkdir -p "$WORK/mkbin"
+cat > "$WORK/mkbin/mkdir" <<GATE
+#!/usr/bin/env bash
+$(command -v mkdir) "\$@"; rc=\$?
+case "\${!#}" in */claims/t-2.*) touch "$WORK/gate-entered"; while [ ! -e "$WORK/gate-release" ]; do sleep 0.1; done ;; esac
+exit \$rc
+GATE
+chmod +x "$WORK/mkbin/mkdir"
+( PATH="$WORK/mkbin:$PATH" timeout 10 "$BIN/chief-watch.sh" > "$WORK/claim-a.out" 2>&1; echo "rc=$?" >> "$WORK/claim-a.out" ) &
+wait_until test -e "$WORK/gate-entered"
+touch "$CHIEF_HOME/tasks/t-2/turn-ended"   # a finishing turn; same done event
+assert_eq "$(timeout 3 "$BIN/chief-watch.sh"; echo "rc=$?")" "rc=124" "replacement does not deliver an event already claimed"
+touch "$WORK/gate-release"
+wait
+assert_eq "$(cat "$WORK/claim-a.out")" "$(line claimed)
+rc=0" "the displaced claim winner delivers the event"
+assert_eq "$(timeout 3 "$BIN/chief-watch.sh"; echo "rc=$?")" "rc=124" "a later watcher does not re-deliver it"
+
+# Debris from earlier watchers does not break a later arm.
+mkdir -p "$CHIEF_HOME/state/claims/gone-task.1.1.1"
+: > "$OWNERF.99999"
+echo "done: after debris" >> "$CHIEF_HOME/tasks/t-2/status"
+assert_eq "$(timeout 10 "$BIN/chief-watch.sh")" "$(line 'after debris')" "owner-tmp/claim debris does not break a later arm"
+assert_file_missing "$CHIEF_HOME/state/claims/gone-task.1.1.1" "claim GC drops a claim whose task is gone"
+cl="$CHIEF_HOME/state/claims"
+cur=$(cd "$cl" && ls -t | grep "^t-2\\." | head -1)
+cur_st=$(cd "$cl" && ls -t | grep "^st-1\\." | head -1)
+mkdir "$cl/t-2.1.111" "$cl/st-1.1.5.111"
+touch -d '3 days ago' "$cl/$cur" "$cl/$cur_st" "$cl/t-2.1.111" "$cl/st-1.1.5.111"
+timeout 3 "$BIN/chief-watch.sh" >/dev/null; true
+assert_file_exists "$cl/$cur" "claim GC never removes the current done key, however old"
+assert_file_exists "$cl/$cur_st" "claim GC never removes the current stale key, however old"
+assert_file_missing "$cl/t-2.1.111" "claim GC removes an old-generation done claim"
+assert_file_missing "$cl/st-1.1.5.111" "claim GC removes an old-generation stale claim"
+
 harness_summary

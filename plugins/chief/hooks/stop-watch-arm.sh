@@ -6,10 +6,9 @@
 # you for. chief-watch.sh does the actual polling; this script only
 # interprets its exit.
 #
-# Deliberately NOT handled here (kept out for v1 simplicity): concurrent-arm
-# locking, generation claims, beacon staleness backstops. Firstmate's
-# equivalent (bin/fm-claude-stop-autoarm.sh) solves those; this is the
-# simpler version of the same idea, sized for one person's fleet.
+# Concurrent arms are resolved by chief-watch.sh itself (the newest watcher
+# takes over; an older one exits silently, which this script must not rewake
+# on). Beacon staleness backstops are deliberately not handled.
 set -euo pipefail
 
 CHIEF_PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -39,7 +38,7 @@ WATCH="$CHIEF_ROOT/bin/chief-watch.sh"
 
 REASON=$("$WATCH" 2>&1) || true
 
-if [ "$REASON" = "nothing in flight" ]; then
+if [ -z "$REASON" ] || [ "$REASON" = "nothing in flight" ]; then
   exit 0
 fi
 
