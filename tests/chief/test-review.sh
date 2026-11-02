@@ -281,6 +281,58 @@ assert_contains "$out" "cannot read the reviewer pool" "bad config: a clear erro
 assert_eq "$(chief_meta_get b-8 reviewer 2>/dev/null)" "" "bad config: nothing linked"
 rm "$CHIEF_HOME/config/agents"
 
+# --- one wake per round: the watcher waits for the last reviewer and writes a combined report ---
+printf '[reviewer]\nstrategy = all\nclaude:sonnet\ncodex\n' > "$CHIEF_HOME/config/agents"
+for t in "$TASKS"/*/; do t=$(basename "$t"); [ "$(chief_meta_get "$t" status 2>/dev/null)" = working ] && "$BIN/chief-backlog.sh" hold "$t" idle >/dev/null; done
+newb b-9
+timeout 30 "$RV" b-9 >/dev/null 2>&1
+rm "$CHIEF_HOME/config/agents"
+"$BIN/chief-backlog.sh" hold b-9 idle >/dev/null
+printf 'Verdict: PASS\n' > "$TASKS/b-9-rv-sonnet/report.md"; echo "done: round 1 PASS @x" >> "$TASKS/b-9-rv-sonnet/status"
+silent=$(CHIEF_POLL=1 timeout 4 "$BIN/chief-watch.sh"); rc=$?
+assert_eq "$rc:$silent" "124:" "one wake: the first reviewer done does not wake Chief"
+printf 'Verdict: FAIL\n' > "$TASKS/b-9-rv-codex/report.md"; echo "done: round 1 FAIL (1 blocking) @x" >> "$TASKS/b-9-rv-codex/status"
+out=$(CHIEF_POLL=1 timeout 4 "$BIN/chief-watch.sh")
+assert_contains "$out" "all 2 reviewers of b-9 done, combined report: $TASKS/b-9/review-round-1.md" "one wake: the last reviewer wakes Chief once, pointing at the combined report"
+CMB=$(cat "$TASKS/b-9/review-round-1.md")
+assert_contains "$CMB" "## b-9-rv-sonnet" "one wake: the combined report has each reviewer"
+assert_contains "$CMB" "Verdict: FAIL" "one wake: the combined report carries each verdict"
+assert_contains "$(cat "$TASKS/b-9-rv-sonnet/report.md")" "Verdict: PASS" "one wake: individual reports stay as they are"
+for r in b-9-rv-sonnet b-9-rv-codex; do "$BIN/chief-backlog.sh" hold $r "idle" >/dev/null; done
+"$BIN/chief-backlog.sh" status b-9-rv-sonnet in-flight >/dev/null
+silent=$(CHIEF_POLL=1 timeout 4 "$BIN/chief-watch.sh"); rc=$?
+assert_eq "$rc:$silent" "124:" "one wake: nothing more wakes for the same round"
+"$BIN/chief-backlog.sh" hold b-9-rv-sonnet "idle" >/dev/null
+
+# simultaneous completions: announced once, and not again on the next run
+for t in "$TASKS"/*/; do t=$(basename "$t"); [ "$(chief_meta_get "$t" status 2>/dev/null)" = working ] && "$BIN/chief-backlog.sh" hold "$t" idle >/dev/null; done
+printf '[reviewer]\nstrategy = all\nclaude:sonnet\ncodex\n' > "$CHIEF_HOME/config/agents"
+newb b-10
+timeout 30 "$RV" b-10 >/dev/null 2>&1
+rm "$CHIEF_HOME/config/agents"
+"$BIN/chief-backlog.sh" hold b-10 idle >/dev/null
+for r in b-10-rv-sonnet b-10-rv-codex; do printf 'Verdict: PASS\n' > "$TASKS/$r/report.md"; echo "done: round 1 PASS @x" >> "$TASKS/$r/status"; done
+out=$(CHIEF_POLL=1 timeout 4 "$BIN/chief-watch.sh")
+assert_contains "$out" "all 2 reviewers of b-10 done" "simultaneous: the round is announced"
+out=$(CHIEF_POLL=1 timeout 4 "$BIN/chief-watch.sh"); rc=$?
+assert_eq "$rc:$out" "124:" "simultaneous: the same round is not announced again"
+
+# a failed sibling blocks the round announcement; the failure itself still wakes
+for t in "$TASKS"/*/; do t=$(basename "$t"); [ "$(chief_meta_get "$t" status 2>/dev/null)" = working ] && "$BIN/chief-backlog.sh" hold "$t" idle >/dev/null; done
+printf '[reviewer]\nstrategy = all\nclaude:sonnet\ncodex\n' > "$CHIEF_HOME/config/agents"
+newb b-11
+timeout 30 "$RV" b-11 >/dev/null 2>&1
+rm "$CHIEF_HOME/config/agents"
+"$BIN/chief-backlog.sh" hold b-11 idle >/dev/null
+printf 'Verdict: PASS\n' > "$TASKS/b-11-rv-sonnet/report.md"; echo "done: round 1 PASS @x" >> "$TASKS/b-11-rv-sonnet/status"
+echo "failed: could not finish" >> "$TASKS/b-11-rv-codex/status"
+out=$(CHIEF_POLL=1 timeout 4 "$BIN/chief-watch.sh")
+assert_contains "$out" "b-11-rv-codex: state: failed" "failed sibling: the failure wakes at once"
+assert_not_contains "$out" "all 2 reviewers" "failed sibling: no completed round is announced"
+out=$(CHIEF_POLL=1 timeout 4 "$BIN/chief-watch.sh"); rc=$?
+assert_eq "$rc:$out" "124:" "failed sibling: the finished reviewer stays quiet"
+assert_file_missing "$TASKS/b-11/review-round-1.md" "failed sibling: no combined report"
+
 # --- manual use on an arbitrary branch ---
 git -C "$WORK/project" branch feat/other main
 assert_success "manual: chief-spawn --mode reviewer --spec" -- \
