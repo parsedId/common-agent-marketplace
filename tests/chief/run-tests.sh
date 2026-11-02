@@ -20,10 +20,14 @@ echo " Chief plugin - functional test suite"
 echo "========================================"
 echo ""
 
-# Mock-backend workers (argv0 chief-mock-*) alive now; a test that leaves one
-# behind shows up as a new pid after the sweep.
-mock_pids() { ps -eo pid=,args= | awk '$2 ~ /^chief-mock-/ { print $1 }' | sort; }
-MOCK_BEFORE=$(mock_pids)
+# Mock-backend workers (argv0 chief-mock-*) this run started are logged to
+# CHIEF_MOCK_RUN_LOG (directly, or via each test's harness reap); any still
+# alive after the sweep leaked. Other runs' workers are never in the log.
+source "$SCRIPT_DIR/lib/harness.sh"
+CHIEF_MOCK_RUN_LOG=$(mktemp)
+export CHIEF_MOCK_RUN_LOG
+CHIEF_MOCK_PID_LOG=$CHIEF_MOCK_RUN_LOG
+export CHIEF_MOCK_PID_LOG
 
 total_files=0
 failed_files=0
@@ -38,7 +42,10 @@ for f in "$SCRIPT_DIR"/test-*.sh; do
   echo ""
 done
 
-LEAKED=$(comm -13 <(echo "$MOCK_BEFORE") <(mock_pids) | wc -l | tr -d ' ')
+LEAKED_PIDS=$(harness_leaked_mock_pids "$CHIEF_MOCK_RUN_LOG")
+LEAKED=$(printf '%s\n' "$LEAKED_PIDS" | grep -c .)
+[ -z "$LEAKED_PIDS" ] || kill $LEAKED_PIDS 2>/dev/null
+rm -f "$CHIEF_MOCK_RUN_LOG"
 echo "mock workers left behind: $LEAKED"
 [ "$LEAKED" -eq 0 ] || failed_files=$((failed_files + 1))
 
