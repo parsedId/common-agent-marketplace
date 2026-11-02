@@ -185,7 +185,7 @@ copilot
 claude:sonnet
 claude:sonnet args="--verbose"
 EOF2
-assert_eq "$(chief_agent_fanout reviewer | paste -sd' ' -)" "copilot claude-sonnet claude-sonnet" "all: one slug per entry"
+assert_eq "$(chief_agent_fanout reviewer | paste -sd' ' -)" "copilot sonnet sonnet" "all: one slug per entry (the model, else the agent)"
 assert_eq "$(CHIEF_AGENT_PICK=2 pick reviewer)" "claude:sonnet|" "all: CHIEF_AGENT_PICK picks that entry"
 chief_agent_select reviewer; assert_eq "$SEL_AGENT" "copilot" "all: the first entry without a pick"
 CHIEF_AGENT_PICK=3 chief_agent_select reviewer; assert_eq "$SEL_ARGS" "--verbose" "all: a pick carries the entry's args"

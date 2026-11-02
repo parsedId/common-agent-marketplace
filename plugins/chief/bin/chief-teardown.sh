@@ -13,7 +13,7 @@
 # asks whether merging it into the fetched default branch would change nothing.
 #
 # Tearing down a builder also discards its linked reviewers, once the builder's
-# own teardown has succeeded; a refused builder leaves the reviewer alone.
+# own teardown has succeeded; a refused builder leaves the reviewers alone.
 #
 # Usage: chief-teardown.sh <id> [--abandon]
 set -euo pipefail

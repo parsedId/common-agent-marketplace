@@ -191,10 +191,10 @@ chief_agent_select() {  # <role> [peek]
   IFS=$SEP read -r SEL_AGENT SEL_MODEL _ SEL_COMMAND SEL_ARGS <<< "$rec"
 }
 
-chief_agent_fanout() {  # <role> - one slug (agent[-model]) per reviewer to run: the pool under all, else a single empty line
+chief_agent_fanout() {  # <role> - one slug per reviewer to run (the model, else the agent): the pool under all, else a single empty line
   _chief_agent_read "$1" || return 1
   if [ "$STRATEGY" != all ] || [ -z "$POOL" ]; then echo ""; return 0; fi
-  awk -F"$SEP" '{ s = tolower($1 ($2 != "" ? "-" $2 : "")); gsub(/[^a-z0-9]+/, "-", s); print s }' <<< "$POOL"
+  awk -F"$SEP" '{ s = tolower($2 != "" ? $2 : $1); gsub(/[^a-z0-9]+/, "-", s); print s }' <<< "$POOL"
 }
 
 chief_agent_note() {  # after chief_agent_select - the marker for a pool that is not the role's own

@@ -12,11 +12,13 @@ chief_id_check() {
 }
 
 # chief_id_compose <base> [suffix] -> <base>-<suffix> as a valid id: the base
-# cut by whole words to fit, -2, -3... while a task with that id exists.
+# cut by whole words to fit, -2, -3... while a task with that id exists. The
+# suffix is capped at 16 chars so the base always keeps room.
 chief_id_compose() {
   local base suffix tail id n=1
   base=$(printf '%s' "$1" | tr 'A-Z' 'a-z' | sed -E 's/[^a-z0-9]+/-/g; s/^[^a-z]+//; s/-+$//')
   suffix=$(printf '%s' "${2:-}" | tr 'A-Z' 'a-z' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')
+  suffix=$(printf '%s' "${suffix:0:16}" | sed -E 's/-+$//')
   while :; do
     tail=${suffix:+-$suffix}; [ "$n" = 1 ] || tail+="-$n"
     id=${base:-t}
