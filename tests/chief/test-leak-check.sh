@@ -38,7 +38,8 @@ backend_relaunch leaky-run /dev/null
 trap - EXIT
 exit 0
 EOF
-OUT=$(bash "$RUN/run-tests.sh" 2>&1); RC=$?
+mkdir "$WORK/tmp"
+OUT=$(TMPDIR="$WORK/tmp" bash "$RUN/run-tests.sh" 2>&1); RC=$?
 assert_contains "$OUT" "mock workers left behind: 1" "the runner reports a worker left by a test that dropped its trap"
 assert_eq "$((RC != 0))" "1" "the runner fails on that leak"
 
