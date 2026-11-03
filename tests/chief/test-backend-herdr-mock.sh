@@ -144,7 +144,7 @@ chief_agent_use t1 >/dev/null 2>&1
 echo "[prompt] 'blocked' is not 'turn started'"
 reset; cp "$FX/screen-trust-dialog.txt" "$FAKE/screen"; echo "$BLOCKED" > "$FAKE/prompt.json"
 err=$(_chief_herdr_prompt t1 "$BRIEF" 2>&1 >/dev/null); rc=$?
-assert_eq "$rc" "1" "a reply of blocked -> failure"
+assert_eq "$rc" "3" "a reply of blocked -> failure"
 assert_eq "$(count 'agent prompt')" "1" "...not retried"
 assert_not_contains "$(cat "$FAKE/calls")" "--until blocked" "...and blocked is not awaited"
 reset; echo "$WORKING" > "$FAKE/prompt.json"; cp "$FX/screen-ready.txt" "$FAKE/screen"
@@ -166,7 +166,7 @@ assert_eq "$rc" "0" "...and success once the turn starts"
 reset; cp "$FX/screen-pasted-placeholder.txt" "$FAKE/screen"; cp "$FX/screen-ready.txt" "$FAKE/keys.screen"
 echo "$STALLED" > "$FAKE/prompt.json"; echo 1 > "$FAKE/prompt.rc"; echo 1 > "$FAKE/wait.rc"
 _chief_herdr_prompt t1 "$BRIEF" >/dev/null 2>&1
-assert_eq "$?" "1" "Enter sent but no turn started -> failure"
+assert_eq "$?" "3" "Enter sent but no turn started -> failure"
 assert_eq "$(count 'agent prompt')" "1" "...still no resend"
 # raw text in the input box
 reset; printf '%s\n' "─────" "❯ $(printf '%s' "$BRIEF" | head -c 60)" "─────" "  ⏵⏵ bypass permissions on" > "$FAKE/screen"
@@ -212,7 +212,7 @@ chief_meta_set t1 agent claude; chief_agent_use t1 >/dev/null 2>&1
 # TUI not rendered yet: the text is queued in the pty
 reset; cp "$FX/screen-shell-only.txt" "$FAKE/screen"; echo "$STALLED" > "$FAKE/prompt.json"; echo 1 > "$FAKE/prompt.rc"
 _chief_herdr_prompt t1 "$BRIEF" >/dev/null 2>&1
-assert_eq "$?" "1" "shell line only -> failure after the wait"
+assert_eq "$?" "3" "shell line only -> failure after the wait"
 assert_eq "$(count 'agent prompt')" "1" "...never resent while the TUI is not rendered"
 reset; cp "$FX/screen-shell-only.txt" "$FAKE/screen"; cp "$FX/screen-pasted-placeholder.txt" "$FAKE/screen.2"
 cp "$FX/screen-ready.txt" "$FAKE/keys.screen"; echo "$STALLED" > "$FAKE/prompt.json"; echo 1 > "$FAKE/prompt.rc"; echo 0 > "$FAKE/wait.rc"
@@ -233,7 +233,7 @@ out=$(spawn s1); rc=$?
 assert_eq "$((rc != 0))" "1" "a dialog and a 'blocked' reply -> non-zero"
 assert_not_contains "$out" "spawned:" "...no 'spawned:' line"
 assert_file_missing "$CHIEF_HOME/tasks/s1/meta" "...rolled back, no meta left"
-assert_eq "$(closed_workspaces)" "w1 " "...closing only the task's workspace by its worktree path, not look-alikes or the project's"
+assert_eq "$(closed_workspaces)" "w1 w1 " "...(first turn not started: retried once) closing only the task's workspace by its worktree path, not look-alikes or the project's"
 mkproj; reset; cp "$FX/screen-shell-only.txt" "$FAKE/screen"
 out=$(spawn s3); rc=$?
 assert_eq "$((rc != 0))" "1" "a pane that never renders -> non-zero"
@@ -289,5 +289,16 @@ chief_meta_set t2 status torn-down
 reset; home_ws
 backend_teardown t1 "$(dirname "$CHIEF_HOME")" "$CHIEF_HOME/worktrees/t1"
 assert_eq "$(closed_workspaces)" "" "a project dir that is the Chief home's workspace -> never closed"
+
+echo "[spawn] a first turn that never starts: exit 3, the screen kept as evidence"
+RP="$WORK/rp"; mkdir -p "$RP"; git -C "$RP" init -q -b main; git -C "$RP" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+echo "$BRIEF" > "$WORK/brief.md"; chief_meta_set t3 agent claude
+reset; cp "$FX/screen-ready.txt" "$FAKE/screen"; echo "$STALLED" > "$FAKE/prompt.json"; echo 1 > "$FAKE/prompt.rc"
+backend_spawn t3 "$RP" "$WORK/brief.md" feature/t3 >/dev/null 2>&1; rc=$?
+assert_eq "$rc" "3" "no turn started -> backend_spawn returns 3"
+assert_file_exists "$CHIEF_HOME/tasks/t3/evidence/spawn-screen.txt" "...with the pane screen saved to evidence/"
+reset; cp "$FX/screen-trust-dialog.txt" "$FAKE/screen"; echo "$BLOCKED" > "$FAKE/prompt.json"
+backend_spawn t3 "$RP" "$WORK/brief.md" feature/t3 >/dev/null 2>&1; rc=$?
+assert_eq "$rc" "1" "an unanswered permission prompt is not retryable -> 1"
 
 harness_summary

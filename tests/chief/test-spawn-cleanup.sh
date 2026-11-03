@@ -134,6 +134,21 @@ assert_file_missing "$CHIEF_HOME/tasks/t-fail/spawning" \
 assert_file_missing "$CHIEF_HOME/tasks/t-locked/spawning" \
   "spawn: lock released via trap after a successful spawn"
 
+# --- a first turn that never starts: one automatic retry, then a clean failure ---
+out=$(CHIEF_MOCK_NOTURN=1 "$BIN/chief-spawn.sh" t-retry "$WORK/project" --mode builder --branch feat/t-retry --intent x 2>&1); rc=$?
+assert_eq "$rc" "0" "retry: the second attempt succeeds"
+assert_contains "$out" "retrying the spawn once" "retry: announced"
+assert_file_exists "$CHIEF_HOME/tasks/t-retry/meta" "retry: the task is recorded"
+assert_eq "$(pgrep -fc '^chief-mock-t-retry 100000')" "1" "retry: one worker, the first attempt's is gone"
+out=$(CHIEF_MOCK_NOTURN=2 "$BIN/chief-spawn.sh" t-retry2 "$WORK/project" --mode builder --branch feat/t-retry2 --intent x 2>&1); rc=$?
+assert_eq "$rc" "1" "retry: two failed attempts fail"
+assert_contains "$out" "no first turn started on either attempt" "retry: says both attempts failed"
+assert_file_missing "$CHIEF_HOME/tasks/t-retry2/meta" "retry: no meta left"
+assert_file_missing "$CHIEF_HOME/tasks/t-retry2/brief.md" "retry: no task files left"
+assert_file_exists "$CHIEF_HOME/tasks/t-retry2/evidence/spawn-screen.txt" "retry: the evidence is kept"
+assert_file_missing "$CHIEF_HOME/worktrees/t-retry2" "retry: no worktree left"
+assert_eq "$(git -C "$WORK/project" branch --list feat/t-retry2 | wc -l | tr -d ' ')" "0" "retry: no branch left"
+
 # --- --dry-run and usage errors create nothing, not even the empty dirs ---
 FRESH="$WORK/fresh/.chief"
 assert_success "spawn: --dry-run on a fresh home" -- \

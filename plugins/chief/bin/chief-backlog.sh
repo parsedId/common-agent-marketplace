@@ -13,6 +13,7 @@
 #   chief-backlog.sh note <id> "<text>"                -> replace the note line
 #   chief-backlog.sh hold <id> "<reason>"               -> status=held + note
 #   chief-backlog.sh done <id>                           -> status=done
+#   chief-backlog.sh drop <id>                           -> remove a queued record
 #   chief-backlog.sh list [status]                        -> print matching records
 #   chief-backlog.sh next                                  -> first queued id, or nothing
 #   chief-backlog.sh show <id>                               -> print one record, plus where
@@ -151,6 +152,18 @@ cmd_list() {
   fi
 }
 
+# Removes a queued record (a spawn that never started leaves nothing behind).
+cmd_drop() {
+  local id=$1
+  grep -q "^## $id \\[queued\\] " "$BACKLOG" || fail "$id is not queued"
+  _rewrite '
+    $0 ~ "^## " id " \\[" { skip=1; next }
+    skip && /^## / { skip=0 }
+    !skip { print }
+  ' -v id="$id"
+  echo "dropped: $id"
+}
+
 cmd_next() {
   grep "^## .* \[queued\] " "$BACKLOG" | head -1 | sed -E 's/^## ([^ ]+) .*/\1/' || true
 }
@@ -173,6 +186,7 @@ case "${1:-}" in
   note)   cmd_note "$2" "$3" ;;
   hold)   cmd_hold "$2" "$3" ;;
   done)   cmd_done "$2" ;;
+  drop)   cmd_drop "$2" ;;
   list)   cmd_list "${2:-}" ;;
   next)   cmd_next ;;
   show)   cmd_show "$2" ;;

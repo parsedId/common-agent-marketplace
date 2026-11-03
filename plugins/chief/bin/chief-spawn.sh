@@ -185,7 +185,8 @@ printf '%s\n' "$LIFECYCLE_CONTENT" > "$(chief_task_path "$ID" lifecycle)"
 
 rollback() {  # <failure message>
   backend_spawn_cleanup "$ID" "$PROJECT" "$BRANCH" 2>/dev/null || true
-  rm -f "$(chief_task_path "$ID" meta)"
+  # leave nothing behind but the evidence of why it failed
+  find "$(chief_task_dir "$ID")" -mindepth 1 -maxdepth 1 ! -name evidence ! -name spawning -exec rm -rf {} + 2>/dev/null || true
   fail "$1"
 }
 # Freshen the default branch from origin (best-effort) before branching off it.
@@ -206,7 +207,17 @@ chief_meta_set "$ID" status spawning
 
 # backend_spawn prints exactly two lines (worktree path, then endpoint id).
 # Capture both from ONE call - calling it twice would launch the worker twice.
-SPAWN_OUTPUT=$(backend_spawn "$ID" "$PROJECT" "$BRIEF" "$BRANCH") || rollback "backend_spawn failed"
+# rc 3 = the first turn did not start (a slow, loaded host): clean up and try once more.
+SPAWN_RC=0
+SPAWN_OUTPUT=$(backend_spawn "$ID" "$PROJECT" "$BRIEF" "$BRANCH") || SPAWN_RC=$?
+if [ "$SPAWN_RC" = 3 ]; then
+  echo "chief-spawn: first turn did not start for $ID; retrying the spawn once" >&2
+  backend_spawn_cleanup "$ID" "$PROJECT" "$BRANCH" 2>/dev/null || true
+  SPAWN_RC=0
+  SPAWN_OUTPUT=$(backend_spawn "$ID" "$PROJECT" "$BRIEF" "$BRANCH") || SPAWN_RC=$?
+  [ "$SPAWN_RC" != 3 ] || rollback "no first turn started on either attempt (screen: $(chief_task_path "$ID" evidence/spawn-screen.txt))"
+fi
+[ "$SPAWN_RC" = 0 ] || rollback "backend_spawn failed"
 WORKTREE=$(printf '%s\n' "$SPAWN_OUTPUT" | sed -n 1p)
 ENDPOINT=$(printf '%s\n' "$SPAWN_OUTPUT" | sed -n 2p)
 [ -n "$WORKTREE" ] && [ -n "$ENDPOINT" ] || rollback "backend_spawn returned malformed output: $SPAWN_OUTPUT"

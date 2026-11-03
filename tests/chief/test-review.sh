@@ -232,6 +232,15 @@ out=$(timeout 30 "$RV" b-6 2>&1)
 assert_contains "$out" "round 1 of b-6" "spawn failure: the retry is a clean round 1"
 assert_eq "$(chief_meta_get b-6 review_round)" "1" "spawn failure: review_round is set once linked"
 
+# a reviewer whose first turn never starts: nothing queued, linked or left in tasks/
+newb b-99
+out=$(CHIEF_MOCK_NOTURN=2 timeout 30 "$RV" b-99 2>&1); rc=$?
+assert_eq "$rc" "1" "no first turn: the review fails"
+assert_eq "$("$BIN/chief-backlog.sh" show b-99-rv-sonnet)" "" "no first turn: nothing queued in the backlog"
+assert_file_missing "$TASKS/b-99-rv-sonnet" "no first turn: no task folder"
+assert_eq "$(chief_meta_get b-99 reviewer 2>/dev/null)" "" "no first turn: nothing linked"
+assert_file_exists "$TASKS/b-99/evidence/b-99-rv-sonnet-spawn-screen.txt" "no first turn: the screen is kept with the builder"
+
 # a partial round failure: a retry never overwrites an archived report
 newb b-7
 timeout 30 "$RV" b-7 >/dev/null 2>&1

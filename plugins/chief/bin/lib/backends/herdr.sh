@@ -172,6 +172,7 @@ _chief_herdr_recover() {
 
 # _chief_herdr_prompt <id> <text> - submit <text> and wait only for the turn to
 # START, not to finish; one recovery attempt after a stall, no further retry.
+# Returns 3 when no turn started (chief-spawn.sh retries the spawn), 1 otherwise.
 _chief_herdr_prompt() {
   local id=$1 text=$2 rc=0 before
   before=$(_chief_herdr_screen "$id" detection)
@@ -190,6 +191,7 @@ _chief_herdr_prompt() {
     echo "chief-backend-herdr: prompt for $id stalled at an unanswered permission/approval prompt - no one is present to answer it" >&2
   else
     echo "chief-backend-herdr: no turn started for $id after the prompt" >&2
+    return 3
   fi
   return 1
 }
@@ -208,7 +210,13 @@ backend_spawn() {
 
   _chief_herdr_start_agent "$id" "$pane_id" "$worktree" || return 1
 
-  _chief_herdr_prompt "$id" "$(cat "$brief_path")" || return 1
+  _chief_herdr_prompt "$id" "$(cat "$brief_path")" || {
+    local rc=$?
+    # the pane is closed by the cleanup that follows: keep its screen as evidence
+    mkdir -p "$(chief_task_path "$id" evidence)"
+    _chief_herdr_screen "$id" > "$(chief_task_path "$id" evidence/spawn-screen.txt)"
+    return "$rc"
+  }
 
   printf '%s\n' "$worktree"
   printf 'herdr:%s\n' "$pane_id"

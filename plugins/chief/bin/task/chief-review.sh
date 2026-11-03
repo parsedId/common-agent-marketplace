@@ -67,11 +67,21 @@ if [ "$ROUND" -eq 1 ]; then
   while IFS= read -r slug; do
     PICK=$((PICK + 1))
     RID=$(chief_id_compose "$BID" "rv${slug:+-$slug}")
+    ADDED=0
     if [ -z "$("$CHIEF_ROOT/bin/chief-backlog.sh" show "$RID")" ]; then
       "$CHIEF_ROOT/bin/chief-backlog.sh" add "$RID" "review of $BID: $title" >/dev/null
+      ADDED=1
     fi
+    # One reviewer at a time: chief-spawn.sh returns only once the reviewer's first turn started.
     if ! CHIEF_AGENT_PICK=$PICK "$CHIEF_ROOT/bin/chief-spawn.sh" "$RID" "$PROJECT" --mode reviewer --branch "chore/$RID" \
       --intent "Review $BID" --spec "$text"; then
+      # nothing queued or left behind for the failed one; its evidence moves to the builder
+      if [ -f "$(chief_task_path "$RID" evidence/spawn-screen.txt)" ]; then
+        mkdir -p "$(chief_task_path "$BID" evidence)"
+        mv "$(chief_task_path "$RID" evidence/spawn-screen.txt)" "$(chief_task_path "$BID" evidence/$RID-spawn-screen.txt)"
+      fi
+      { chief_meta_exists "$RID" || [ -e "$(chief_task_path "$RID" spawning)" ]; } || rm -rf "$(chief_task_dir "$RID")"
+      [ "$ADDED" = 0 ] || "$CHIEF_ROOT/bin/chief-backlog.sh" drop "$RID" >/dev/null 2>&1 || true
       for started in $IDS; do "$CHIEF_ROOT/bin/chief-teardown.sh" "$started" --abandon >/dev/null 2>&1 || true; done
       fail "spawning reviewer $RID failed${IDS:+; discarded ${IDS// /, }}; nothing is linked, retry the review"
     fi

@@ -15,7 +15,7 @@
 # so a test harness can reap exactly the workers it started. Likewise
 # $CHIEF_MOCK_RUN_LOG (run-tests.sh's run-wide log), written at spawn time.
 #
-# CHIEF_MOCK_SPAWN_FAIL=1, CHIEF_MOCK_SPAWN_FAIL_ID=<id> and CHIEF_MOCK_SPAWN_MALFORMED=1 are test-only
+# CHIEF_MOCK_NOTURN=<n> (see backend_spawn), CHIEF_MOCK_SPAWN_FAIL=1, CHIEF_MOCK_SPAWN_FAIL_ID=<id> and CHIEF_MOCK_SPAWN_MALFORMED=1 are test-only
 # failure injectors (unset in normal use) so chief-spawn.sh's own failure
 # handling - the backend_spawn_cleanup calls, the spawn lock - can be
 # exercised without herdr/orca: FAIL simulates backend_spawn itself
@@ -45,6 +45,17 @@ backend_spawn() {
   echo $! > "$(chief_task_path "$id" term.pid)"
   [ -z "${CHIEF_MOCK_PID_LOG:-}" ] || echo $! >> "$CHIEF_MOCK_PID_LOG"
   [ -z "${CHIEF_MOCK_RUN_LOG:-}" ] || echo $! >> "$CHIEF_MOCK_RUN_LOG"
+  # CHIEF_MOCK_NOTURN=<n>: the first n spawns of an id fail like a first turn that never started (rc 3).
+  if [ "${CHIEF_MOCK_NOTURN:-0}" -gt 0 ]; then
+    local tries="$(chief_task_path "$id" mock-attempts)"
+    echo x >> "$tries"
+    if [ "$(wc -l < "$tries")" -le "$CHIEF_MOCK_NOTURN" ]; then
+      echo "[mock] no turn started for $id" >&2
+      mkdir -p "$(chief_task_path "$id" evidence)"
+      echo "[mock] screen" > "$(chief_task_path "$id" evidence/spawn-screen.txt)"
+      return 3
+    fi
+  fi
   if [ "${CHIEF_MOCK_SPAWN_FAIL:-0}" = "1" ] || [ "${CHIEF_MOCK_SPAWN_FAIL_ID:-}" = "$id" ]; then
     echo "[mock] simulated backend_spawn failure for $id" >&2
     return 1
