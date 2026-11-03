@@ -15,7 +15,8 @@
 # so a test harness can reap exactly the workers it started. Likewise
 # $CHIEF_MOCK_RUN_LOG (run-tests.sh's run-wide log), written at spawn time.
 #
-# CHIEF_MOCK_NOTURN=<n> (see backend_spawn), CHIEF_MOCK_SPAWN_FAIL=1, CHIEF_MOCK_SPAWN_FAIL_ID=<id> and CHIEF_MOCK_SPAWN_MALFORMED=1 are test-only
+# CHIEF_MOCK_NOTURN=<n> (see backend_spawn), CHIEF_MOCK_SPAWN_FAIL=1,
+# CHIEF_MOCK_SPAWN_FAIL_ID=<id> and CHIEF_MOCK_SPAWN_MALFORMED=1 are test-only
 # failure injectors (unset in normal use) so chief-spawn.sh's own failure
 # handling - the backend_spawn_cleanup calls, the spawn lock - can be
 # exercised without herdr/orca: FAIL simulates backend_spawn itself
