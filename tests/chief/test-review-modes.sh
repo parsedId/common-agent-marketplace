@@ -210,9 +210,51 @@ newb m-9
 echo "done: round 1 PASS @x" >> "$TASKS/m-9-rv-codex/status"; printf 'r1\n' > "$TASKS/m-9-rv-codex/report.md"
 bump() { ( cd "$CHIEF_HOME/worktrees/m-9" && echo "$1" > "$1.txt" && git add "$1.txt" && git -c user.email=t@t -c user.name=t commit -q -m "$1" )
   echo "done: $(git -C "$CHIEF_HOME/worktrees/m-9" rev-parse --short HEAD) $1" >> "$TASKS/m-9/status"; }
-bump a; timeout 30 "$RV" m-9 --mode parallel --only sonnet >/dev/null 2>&1   # round 2: sonnet only
-bump b; timeout 30 "$RV" m-9 --mode parallel --only codex >/dev/null 2>&1    # round 3: codex returns
+bump a; assert_success "archive: round 2 (sonnet only)" -- timeout 30 "$RV" m-9 --mode parallel --only claude:sonnet
+bump b; assert_success "archive: round 3 (codex returns)" -- timeout 30 "$RV" m-9 --mode parallel --only codex
+assert_eq "$(chief_meta_get m-9 review_round)" "3" "archive: the final round is 3"
 assert_eq "$(cat "$TASKS/m-9-rv-codex/report.round-1.md")" "r1" "archive: the report goes under the round it reviewed"
 assert_file_missing "$TASKS/m-9-rv-codex/report.round-2.md" "archive: not under the previous builder round"
+
+# --- a failed re-arm leaves the round unfinished: a same-SHA retry resumes it ---
+resume_case() {  # <id> <failing-reviewer>: round 1 done, round 2's send to <failing-reviewer> fails, then a retry
+  local b=$1 bad=$2 r
+  hold_all
+  printf '[reviewer]\nmode = sequential\nclaude:sonnet\ncodex\n' > "$CFG"
+  newb "$b"
+  "$RV" "$b" > "$WORK/$b.out" 2>&1 &
+  RVPID=$!
+  wait_for has_meta "$b-rv-sonnet"; finish "$b-rv-sonnet" PASS
+  wait_for has_meta "$b-rv-codex"; finish "$b-rv-codex" PASS
+  wait $RVPID
+  ( cd "$CHIEF_HOME/worktrees/$b" && echo f > f.txt && git add f.txt && git -c user.email=t@t -c user.name=t commit -q -m f )
+  SHF=$(git -C "$CHIEF_HOME/worktrees/$b" rev-parse HEAD)
+  echo "done: ${SHF:0:7} fixed" >> "$TASKS/$b/status"
+  mkdir -p "$TASKS/$b-rv-$bad/inbox"; chmod 555 "$TASKS/$b-rv-$bad/inbox"
+  "$RV" "$b" > "$WORK/$b.out" 2>&1 &
+  RVPID=$!
+  if [ "$bad" = codex ]; then
+    wait_for grep -q "round 2 requested" "$TASKS/$b-rv-sonnet/status"
+    echo "done: round 2 PASS @x" >> "$TASKS/$b-rv-sonnet/status"
+  fi
+  wait $RVPID; rc=$?
+  chmod 755 "$TASKS/$b-rv-$bad/inbox"
+  assert_eq "$rc" "1" "$b: the send failure fails the review"
+  assert_eq "$(chief_meta_get $b review_round)" "1" "$b: the round is not advanced"
+  assert_eq "$(chief_meta_get $b review_pending)" "" "$b: pending is lifted"
+  "$RV" "$b" > "$WORK/$b.out" 2>&1 &
+  RVPID=$!
+  for r in sonnet codex; do
+    wait_for grep -q "round 2 requested" "$TASKS/$b-rv-$r/status" || break
+    echo "done: round 2 PASS @x" >> "$TASKS/$b-rv-$r/status"
+  done
+  wait $RVPID; rc=$?
+  assert_eq "$rc" "0" "$b: the retry completes"
+  assert_eq "$(chief_meta_get $b review_round)" "2" "$b: the retry resumes round 2"
+  assert_eq "$(ls "$TASKS/$b-rv-sonnet/inbox" | grep -c msg)" "1" "$b: sonnet got the round message once"
+  assert_eq "$(ls "$TASKS/$b-rv-codex/inbox" | grep -c msg)" "1" "$b: codex got the round message once"
+}
+resume_case m-10 sonnet
+resume_case m-11 codex
 
 harness_summary

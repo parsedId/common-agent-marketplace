@@ -89,7 +89,7 @@ Builder brief (intent): $(chief_task_path "$BID" brief.md)
 Builder done line: ${LAST#done: }"
 
 PRIOR=$LINKED   # restored if a spawn fails
-PRIOR_ROUND=$(chief_meta_get "$BID" review_round 2>/dev/null || true) PRIOR_SHA=$(chief_meta_get "$BID" review_sha 2>/dev/null || true)
+PRIOR_SHA=$(chief_meta_get "$BID" review_sha 2>/dev/null || true)
 ALL=$LINKED IDS="" STARTED="" STOP=""
 SEQ=0; [ "$MODE" = sequential ] && SEQ=1
 
@@ -117,7 +117,6 @@ spawn_rv() {  # <pick> <slug>
     --intent "Review $BID" --spec "$text"; then
     for started in $STARTED; do "$CHIEF_ROOT/bin/chief-teardown.sh" "$started" --abandon >/dev/null 2>&1 || true; done
     chief_meta_set "$BID" reviewer "$PRIOR"; chief_meta_set "$BID" review_ids ""
-    chief_meta_set "$BID" review_round "$PRIOR_ROUND"; chief_meta_set "$BID" review_sha "$PRIOR_SHA"
     fail "spawning reviewer $RID failed${STARTED:+; discarded ${STARTED// /, }}; nothing new is linked, retry the review"
   fi
   chief_meta_set "$RID" for "$BID"
@@ -169,11 +168,12 @@ if [ "$PLAN" = "0 " ] && [ -n "$LINKED" ]; then   # no pool to pick from: re-arm
 fi
 
 if [ "$SEQ" = 1 ]; then
-  # Claim the round up front so the same-SHA guard sees the run; the gate keeps the watcher
-  # quiet until it ends and the trap lifts it on any exit.
-  trap 'chief_meta_set "$BID" review_pending ""; chief_lock_release "$REVIEW_LOCK"' EXIT
+  # Claim the SHA up front so the same-SHA guard sees the run; the gate keeps the watcher quiet
+  # until it ends. An unfinished run gives the SHA back and leaves review_round alone, so a
+  # retry resumes the same round (armed reviewers are skipped).
+  trap '[ -n "${RUN_DONE:-}" ] || chief_meta_set "$BID" review_sha "$PRIOR_SHA"
+    chief_meta_set "$BID" review_pending ""; chief_lock_release "$REVIEW_LOCK"' EXIT
   chief_meta_set "$BID" review_pending 1
-  chief_meta_set "$BID" review_round "$ROUND"
   chief_meta_set "$BID" review_sha "$SHA"
 fi
 
@@ -192,5 +192,6 @@ done <<< "$PLAN"
 link
 chief_meta_set "$BID" review_round "$ROUND"
 chief_meta_set "$BID" review_sha "$SHA"
+RUN_DONE=1
 
 echo "review: ${IDS// /, } round $ROUND of $BID @${SHA:0:7}${STOP:+ (sequential, stopped at $STOP)}"
