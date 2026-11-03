@@ -291,5 +291,40 @@ assert_file_exists "$cl/$cur" "claim GC never removes the current done key, howe
 assert_file_exists "$cl/$cur_st" "claim GC never removes the current stale key, however old"
 assert_file_missing "$cl/t-2.1.111" "claim GC removes an old-generation done claim"
 assert_file_missing "$cl/st-1.1.5.111" "claim GC removes an old-generation stale claim"
+# --- review rounds: a deferred reviewer keeps no claim; one announcement per round ---
+setm() { sed -i "/^$2=/d" "$CHIEF_HOME/tasks/$1/meta"; printf '%s=%s\n' "$2" "$3" >> "$CHIEF_HOME/tasks/$1/meta"; }
+mk_round() {   # <builder> <reviewer>...: a builder with finished-or-not reviewers
+  local b=$1; shift
+  for t in "$b" "$@"; do
+    assert_success "spawn: $t" -- timeout 10 "$BIN/chief-spawn.sh" "$t" "$WORK/project" --mode builder --branch "feat/$t" --intent "round"
+  done
+  for t in "$@"; do setm "$t" for "$b"; done
+  setm "$b" reviewer "$*"; setm "$b" review_round 1
+}
+mk_round rb-b rb-r1 rb-r2
+echo "done: r1" >> "$CHIEF_HOME/tasks/rb-r1/status"
+out=$(timeout 3 "$BIN/chief-watch.sh"); rc=$?
+assert_eq "$rc:$out" "124:" "deferred reviewer: sibling still working, silent"
+setm rb-r2 status torn-down
+assert_contains "$(timeout 3 "$BIN/chief-watch.sh")" "rb-r1: state: done" \
+  "deferred reviewer: announced once the sibling is torn down"
+
+mk_round rc-b rc-r1 rc-r2
+echo "done: r1" >> "$CHIEF_HOME/tasks/rc-r1/status"
+echo "done: r2" >> "$CHIEF_HOME/tasks/rc-r2/status"
+rm -f "$WORK/gate-entered" "$WORK/gate-release"; mkdir -p "$WORK/rbin"
+cat > "$WORK/rbin/mkdir" <<GATE
+#!/usr/bin/env bash
+$(command -v mkdir) "\$@"; rc=\$?
+case "\${!#}" in */claims/rc-r1.*) touch "$WORK/gate-entered"; while [ ! -e "$WORK/gate-release" ]; do sleep 0.1; done ;; esac
+exit \$rc
+GATE
+chmod +x "$WORK/rbin/mkdir"
+( PATH="$WORK/rbin:$PATH" timeout 10 "$BIN/chief-watch.sh" > "$WORK/rnd-a.out" 2>&1; echo "rc=$?" >> "$WORK/rnd-a.out" ) &
+wait_until test -e "$WORK/gate-entered"
+assert_contains "$(timeout 5 "$BIN/chief-watch.sh")" "all 2 reviewers of rc-b done" "overlapping watchers: the replacement announces the round"
+touch "$WORK/gate-release"
+wait
+assert_eq "$(cat "$WORK/rnd-a.out")" "rc=0" "overlapping watchers: the paused one stays silent"
 
 harness_summary

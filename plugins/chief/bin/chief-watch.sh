@@ -70,6 +70,8 @@ in_flight_ids() {
 # round's combined report, acknowledges every reviewer's done line (so none
 # is announced again) and sets ROUND_NOTE to point at the report. A sibling
 # that failed, blocked or went stale announces itself; it holds the round back.
+# Returns 1 to defer, 2 when another watcher already took the round's
+# announcement (an atomic claim per builder and round).
 ROUND_NOTE=""
 round_gate() {
   local bid rid live="" n out line ids
@@ -83,6 +85,7 @@ round_gate() {
     [[ $("$CHIEF_ROOT/bin/task/chief-crew-state.sh" "$rid" 2>/dev/null) == "state: done"* ]] || return 1
   done
   n=$(chief_meta_get "$bid" review_round 2>/dev/null || echo 1)
+  mkdir "$CLAIMS/$bid.round$n" 2>/dev/null || return 2
   out=$(chief_task_path "$bid" "review-round-$n.md")
   {
     echo "# Review round $n of $bid"
@@ -126,7 +129,9 @@ while true; do
         chief_meta_set "$id" notify-baseline "$norm"
         # One wake per round: a finished reviewer waits for its siblings.
         if [[ $line == "state: done"* ]]; then
-          round_gate "$id" || { chief_meta_set "$id" notify-baseline ""; continue; }
+          rc=0; round_gate "$id" || rc=$?
+          if [ "$rc" = 1 ]; then rmdir "$claim" 2>/dev/null || true; chief_meta_set "$id" notify-baseline ""; fi
+          [ "$rc" = 0 ] || continue
         fi
         echo "$id: $line$ROUND_NOTE"
         exit 0
