@@ -296,7 +296,14 @@ echo "$BRIEF" > "$WORK/brief.md"; chief_meta_set t3 agent claude
 reset; cp "$FX/screen-ready.txt" "$FAKE/screen"; echo "$STALLED" > "$FAKE/prompt.json"; echo 1 > "$FAKE/prompt.rc"
 backend_spawn t3 "$RP" "$WORK/brief.md" feature/t3 >/dev/null 2>&1; rc=$?
 assert_eq "$rc" "3" "no turn started -> backend_spawn returns 3"
-assert_file_exists "$CHIEF_HOME/tasks/t3/evidence/spawn-screen.txt" "...with the pane screen saved to evidence/"
+assert_file_exists "$CHIEF_HOME/tasks/t3/evidence/spawn-screen.1.txt" "...with the pane screen saved to evidence/"
+# a second attempt that fails at startup keeps its own screen, not the first one's
+cp "$FX/screen-shell-only.txt" "$FAKE/screen"
+backend_spawn t3 "$RP" "$WORK/brief.md" feature/t3b >/dev/null 2>&1; rc=$?
+assert_eq "$rc" "1" "a startup failure is not retryable -> 1"
+assert_file_exists "$CHIEF_HOME/tasks/t3/evidence/spawn-screen.2.txt" "...its screen saved as attempt 2"
+assert_contains "$(cat "$CHIEF_HOME/tasks/t3/evidence/spawn-screen.2.txt")" "claude --dangerously-skip-permissions" "...showing the startup screen"
+assert_not_contains "$(cat "$CHIEF_HOME/tasks/t3/evidence/spawn-screen.1.txt")" "claude --dangerously-skip-permissions" "...attempt 1's file untouched"
 reset; cp "$FX/screen-trust-dialog.txt" "$FAKE/screen"; echo "$BLOCKED" > "$FAKE/prompt.json"
 backend_spawn t3 "$RP" "$WORK/brief.md" feature/t3 >/dev/null 2>&1; rc=$?
 assert_eq "$rc" "1" "an unanswered permission prompt is not retryable -> 1"

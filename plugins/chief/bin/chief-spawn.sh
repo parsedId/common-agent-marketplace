@@ -185,7 +185,8 @@ printf '%s\n' "$LIFECYCLE_CONTENT" > "$(chief_task_path "$ID" lifecycle)"
 
 rollback() {  # <failure message>
   backend_spawn_cleanup "$ID" "$PROJECT" "$BRANCH" 2>/dev/null || true
-  # leave nothing behind but the evidence of why it failed
+  # leave nothing behind but the evidence of why it failed (a queued backlog record goes too)
+  "$CHIEF_ROOT/bin/chief-backlog.sh" drop "$ID" >/dev/null 2>&1 || true
   find "$(chief_task_dir "$ID")" -mindepth 1 -maxdepth 1 ! -name evidence ! -name spawning -exec rm -rf {} + 2>/dev/null || true
   fail "$1"
 }
@@ -208,6 +209,7 @@ chief_meta_set "$ID" status spawning
 # backend_spawn prints exactly two lines (worktree path, then endpoint id).
 # Capture both from ONE call - calling it twice would launch the worker twice.
 # rc 3 = the first turn did not start (a slow, loaded host): clean up and try once more.
+rm -f "$(chief_task_path "$ID" evidence)"/spawn-screen.*.txt
 SPAWN_RC=0
 SPAWN_OUTPUT=$(backend_spawn "$ID" "$PROJECT" "$BRIEF" "$BRANCH") || SPAWN_RC=$?
 if [ "$SPAWN_RC" = 3 ]; then
@@ -215,7 +217,7 @@ if [ "$SPAWN_RC" = 3 ]; then
   backend_spawn_cleanup "$ID" "$PROJECT" "$BRANCH" 2>/dev/null || true
   SPAWN_RC=0
   SPAWN_OUTPUT=$(backend_spawn "$ID" "$PROJECT" "$BRIEF" "$BRANCH") || SPAWN_RC=$?
-  [ "$SPAWN_RC" != 3 ] || rollback "no first turn started on either attempt (screen: $(chief_task_path "$ID" evidence/spawn-screen.txt))"
+  [ "$SPAWN_RC" != 3 ] || rollback "no first turn started on either attempt (screens: $(chief_task_path "$ID" evidence)/spawn-screen.{1,2}.txt)"
 fi
 [ "$SPAWN_RC" = 0 ] || rollback "backend_spawn failed"
 WORKTREE=$(printf '%s\n' "$SPAWN_OUTPUT" | sed -n 1p)

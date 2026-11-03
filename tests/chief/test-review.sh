@@ -234,12 +234,14 @@ assert_eq "$(chief_meta_get b-6 review_round)" "1" "spawn failure: review_round 
 
 # a reviewer whose first turn never starts: nothing queued, linked or left in tasks/
 newb b-99
+"$BIN/chief-backlog.sh" add b-99-rv-sonnet "queued before" >/dev/null
 out=$(CHIEF_MOCK_NOTURN=2 timeout 30 "$RV" b-99 2>&1); rc=$?
 assert_eq "$rc" "1" "no first turn: the review fails"
-assert_eq "$("$BIN/chief-backlog.sh" show b-99-rv-sonnet)" "" "no first turn: nothing queued in the backlog"
+assert_eq "$("$BIN/chief-backlog.sh" show b-99-rv-sonnet)" "" "no first turn: a pre-existing queued record is dropped too"
+assert_file_exists "$TASKS/b-99/evidence/b-99-rv-sonnet-spawn-screen.1.txt" "no first turn: both attempts' screens are kept"
 assert_file_missing "$TASKS/b-99-rv-sonnet" "no first turn: no task folder"
 assert_eq "$(chief_meta_get b-99 reviewer 2>/dev/null)" "" "no first turn: nothing linked"
-assert_file_exists "$TASKS/b-99/evidence/b-99-rv-sonnet-spawn-screen.txt" "no first turn: the screen is kept with the builder"
+assert_file_exists "$TASKS/b-99/evidence/b-99-rv-sonnet-spawn-screen.2.txt" "no first turn: the last screen is kept with the builder"
 
 # a partial round failure: a retry never overwrites an archived report
 newb b-7

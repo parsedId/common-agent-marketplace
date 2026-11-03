@@ -208,15 +208,17 @@ backend_spawn() {
   pane_id=$(printf '%s' "$json" | jq -r '.result.root_pane.pane_id // empty')
   [ -n "$pane_id" ] || { echo "chief-backend-herdr: could not read pane id from: $json" >&2; return 1; }
 
-  _chief_herdr_start_agent "$id" "$pane_id" "$worktree" || return 1
-
-  _chief_herdr_prompt "$id" "$(cat "$brief_path")" || {
-    local rc=$?
-    # the pane is closed by the cleanup that follows: keep its screen as evidence
-    mkdir -p "$(chief_task_path "$id" evidence)"
-    _chief_herdr_screen "$id" > "$(chief_task_path "$id" evidence/spawn-screen.txt)"
+  local rc=0
+  _chief_herdr_start_agent "$id" "$pane_id" "$worktree" || rc=$?
+  [ "$rc" != 0 ] || _chief_herdr_prompt "$id" "$(cat "$brief_path")" || rc=$?
+  if [ "$rc" != 0 ]; then
+    # the cleanup that follows closes the pane: keep this attempt's screen as evidence
+    local dir n
+    dir=$(chief_task_path "$id" evidence); mkdir -p "$dir"
+    n=$(( $(ls "$dir"/spawn-screen.*.txt 2>/dev/null | wc -l) + 1 ))
+    _chief_herdr_screen "$pane_id" > "$dir/spawn-screen.$n.txt"
     return "$rc"
-  }
+  fi
 
   printf '%s\n' "$worktree"
   printf 'herdr:%s\n' "$pane_id"

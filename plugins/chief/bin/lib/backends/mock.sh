@@ -52,7 +52,7 @@ backend_spawn() {
     if [ "$(wc -l < "$tries")" -le "$CHIEF_MOCK_NOTURN" ]; then
       echo "[mock] no turn started for $id" >&2
       mkdir -p "$(chief_task_path "$id" evidence)"
-      echo "[mock] screen" > "$(chief_task_path "$id" evidence/spawn-screen.txt)"
+      echo "[mock] screen" > "$(chief_task_path "$id" evidence/spawn-screen.$(wc -l < "$tries").txt)"
       return 3
     fi
   fi

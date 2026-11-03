@@ -145,7 +145,16 @@ assert_eq "$rc" "1" "retry: two failed attempts fail"
 assert_contains "$out" "no first turn started on either attempt" "retry: says both attempts failed"
 assert_file_missing "$CHIEF_HOME/tasks/t-retry2/meta" "retry: no meta left"
 assert_file_missing "$CHIEF_HOME/tasks/t-retry2/brief.md" "retry: no task files left"
-assert_file_exists "$CHIEF_HOME/tasks/t-retry2/evidence/spawn-screen.txt" "retry: the evidence is kept"
+assert_file_exists "$CHIEF_HOME/tasks/t-retry2/evidence/spawn-screen.1.txt" "retry: attempt 1's screen is kept"
+assert_file_exists "$CHIEF_HOME/tasks/t-retry2/evidence/spawn-screen.2.txt" "retry: attempt 2's screen is kept"
+assert_contains "$out" "spawn-screen.{1,2}.txt" "retry: the failure names the screens"
+# the queued backlog record goes with a final failure; a live one stays
+"$BIN/chief-backlog.sh" add t-q "queued" >/dev/null
+CHIEF_MOCK_NOTURN=2 "$BIN/chief-spawn.sh" t-q "$WORK/project" --mode builder --branch feat/t-q --intent x >/dev/null 2>&1
+assert_eq "$("$BIN/chief-backlog.sh" show t-q)" "" "retry: a queued backlog record is dropped on final failure"
+"$BIN/chief-backlog.sh" add t-live "live" >/dev/null; "$BIN/chief-backlog.sh" status t-live in-flight >/dev/null
+CHIEF_MOCK_NOTURN=2 "$BIN/chief-spawn.sh" t-live "$WORK/project" --mode builder --branch feat/t-live --intent x >/dev/null 2>&1
+assert_contains "$("$BIN/chief-backlog.sh" show t-live)" "[in-flight]" "retry: a live backlog record is never dropped"
 assert_file_missing "$CHIEF_HOME/worktrees/t-retry2" "retry: no worktree left"
 assert_eq "$(git -C "$WORK/project" branch --list feat/t-retry2 | wc -l | tr -d ' ')" "0" "retry: no branch left"
 
