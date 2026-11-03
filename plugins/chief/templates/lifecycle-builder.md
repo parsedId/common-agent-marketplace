@@ -5,6 +5,7 @@
 - [ ] watching until a terminal state (done/failed/blocked/needs-decision); a builder's done line starts with its short commit SHA
 - [ ] reported to operator with the diffstat and a one-line review recommendation, and held (chief-backlog.sh hold <id> "reported: awaiting review decision")
 - [ ] operator asked whether to review, every time (never automatic). Yes -> chief-review.sh <id>; no -> landing. A standing "review everything this session" skips the question until revoked
+- [ ] reviewer run mode applied: [reviewer] mode (parallel/sequential/first); with mode = ask, asked the operator the mode and pool subset, passed --mode/--only (sequential stops at the first FAIL)
 - [ ] with several reviewers, waited for all (a failed/stale one handled); verdicts combined (FAIL if any FAIL) and findings merged into one list. The verdict presented and the reviewers held; next step proposed: FAIL -> send the findings to the builder (operator may edit them), PASS -> land or keep going. After the builder's next done, ask again
 - [ ] landing path chosen - branch pushed and PR opened (host CLI), held with the URL (chief-backlog.sh hold <id> "PR: <url>")
 - [ ] PR approved (host CLI)

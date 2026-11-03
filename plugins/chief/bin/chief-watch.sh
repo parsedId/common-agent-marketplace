@@ -66,17 +66,20 @@ in_flight_ids() {
 }
 
 # round_gate <reviewer-id> - for a reviewer with siblings, returns 1 (stay quiet)
-# until every live reviewer of its builder is done. The last one writes the
-# round's combined report, acknowledges every reviewer's done line (so none
+# until every live reviewer of its builder's round (review_ids, else all
+# linked) is done, and while a sequential run is pending. The last one writes
+# the round's combined report, acknowledges every reviewer's done line (so none
 # is announced again) and sets ROUND_NOTE to point at the report. A sibling
 # that failed, blocked or went stale announces itself; it holds the round back.
 # Returns 1 to defer, 2 when another watcher already took the round's
 # announcement (an atomic claim per builder and round).
 ROUND_NOTE=""
 round_gate() {
-  local bid rid live="" n out line ids
+  local bid rid live="" n out line ids rids
   bid=$(chief_meta_get "$1" for 2>/dev/null) || return 0
-  for rid in $(chief_meta_get "$bid" reviewer 2>/dev/null); do
+  [ -z "$(chief_meta_get "$bid" review_pending 2>/dev/null)" ] || return 1
+  rids=$(chief_meta_get "$bid" review_ids 2>/dev/null) || rids=""
+  for rid in ${rids:-$(chief_meta_get "$bid" reviewer 2>/dev/null)}; do
     [ "$(chief_meta_get "$rid" status 2>/dev/null)" != torn-down ] || continue
     live+="${live:+ }$rid"
   done

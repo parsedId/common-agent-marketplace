@@ -46,6 +46,7 @@ Workers run on `claude` (default), `codex` or `copilot`, on herdr and Orca alike
 
    [reviewer]                   # and for reviewers
    strategy = all               # reviewer only: one reviewer per entry on every review
+   mode = sequential            # reviewer only: parallel (default) | sequential | ask | first
    copilot
    claude:sonnet
 
@@ -53,7 +54,7 @@ Workers run on `claude` (default), `codex` or `copilot`, on herdr and Orca alike
    claude:opus
    ```
 
-   Sections are the worker roles: `[builder]`, `[researcher]`, `[reviewer]`, `[brainstormer]`; any other name is an error. `#` starts a comment. Per entry, `weight=`, `args=` and `command=` may come in any order. `first` takes the first entry; `round-robin` rotates (cursor in `state/agent-cursor-<role>`, updated under a lock so parallel spawns differ); `weighted` draws by `weight=`; `random` is `weighted` with equal weights. `all` (the `[reviewer]` role only) runs every entry; see the review loop.
+   Sections are the worker roles: `[builder]`, `[researcher]`, `[reviewer]`, `[brainstormer]`; any other name is an error. `#` starts a comment. Per entry, `weight=`, `args=` and `command=` may come in any order. `first` takes the first entry; `round-robin` rotates (cursor in `state/agent-cursor-<role>`, updated under a lock so parallel spawns differ); `weighted` draws by `weight=`; `random` is `weighted` with equal weights. `all` (the `[reviewer]` role only) runs every entry; see the review loop. `mode` (also `[reviewer]` only) chooses how a review runs its pool and is independent of `strategy`.
 3. Else `claude` with its default model.
 
 The choice is recorded in the task's meta (`agent`, `model`, `args`, `command`) and reused by relaunch; `chief-crew-state.sh`, `chief-backlog.sh list|show` (in-flight) and the session digest show `[agent: <agent>[:<model>]]`. Spawn fails before creating anything for an unknown agent, a malformed profile or weight, a missing CLI, or a bad `command=` / `args=` / model combination below. Models are passed to the agent unvalidated.
@@ -88,6 +89,12 @@ The operator decides, per builder, whether it is reviewed; Chief asks after ever
   - A torn-down reviewer is skipped and unlinked; the review fails only when none is left.
   - Retry: a reviewer is re-armed once per round (`armed_round=<round>@<sha>` in its meta). A retry at the same commit redoes only the unfinished reviewers; a new commit restarts the round for all of them at that SHA. An archived report is never overwritten.
   - Notifications: the watcher wakes once per round. A finished reviewer stays quiet until every live sibling is done; the last writes `tasks/<builder>/review-round-<N>.md` (every report, by reviewer) and wakes with its path. A reviewer that fails, blocks or goes stale wakes at once and holds the round back.
+- **Run modes:** `mode = parallel|sequential|ask|first` in `[reviewer]` (default `parallel`); `chief-review.sh <builder> [--mode parallel|sequential|first] [--only <agent[:model],...>]` overrides it.
+  - `parallel`: all at once, as above (the pool under `strategy = all`, else the strategy's single pick).
+  - `sequential`: the whole pool in order, one at a time. The first entry is spawned or re-armed, the script waits for it, and starts the next only on PASS. The first non-PASS (FAIL, or a reviewer that fails or blocks) stops the run; the remaining entries are not started or re-armed. The script blocks until then: run it in the background. The watcher stays quiet until the run ends, then wakes once for the reviewers that ran (a combined report when more than one, else the lone report).
+  - `first`: pool entry 1 only.
+  - `ask`: the dispatch skill asks the operator at every review for the mode (`parallel`, `sequential` or `first`) and optionally a subset of the pool, then passes `--mode` and `--only`. `--only` narrows the pool for `parallel`/`sequential` (a bare agent matches all its entries); the script itself refuses `ask`.
+  - A round covers only the reviewers that ran (`review_ids` on the builder); `reviewer=` keeps every reviewer ever linked, for teardown. Each reviewer records its pool entry (`pick=`); a later round with a different selection re-arms or spawns by entry.
 - **Later rounds** re-arm the same reviewer(s): its `report.md` is archived as `report.round-<N-1>.md`, the round message goes to its inbox, the backlog item returns to in-flight, and `working: round N requested` is appended to its status. The same commit is refused while the reviewer is working.
 - **The reviewer** resets its scratch worktree, detaches at the pinned SHA and reviews the full `base...sha` diff every round against the 8-item checklist in its brief (item 3 runs the project's checks), then verifies earlier findings. It writes `report.md` (`Verdict`, `Target`, `Blocking`, `Suggestions`, `Checklist`, `Prior findings`) and ends with `done: round N PASS @<sha7>` or `done: round N FAIL (<n> blocking) @<sha7>`; `failed` means the review could not be completed. It never posts, pushes or merges. A builder's `done` line starts with its short commit SHA, so every re-report is a new line to the watcher.
 - **Chief** presents the verdict, holds the reviewer, and on the operator's yes sends the findings to the builder; the builder fixes them with new commits and reports `done` again. Findings go to a PR only when the operator asks.

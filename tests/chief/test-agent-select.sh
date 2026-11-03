@@ -185,13 +185,19 @@ copilot
 claude:sonnet
 claude:sonnet args="--verbose"
 EOF2
-assert_eq "$(chief_agent_fanout reviewer | paste -sd' ' -)" "copilot sonnet sonnet" "all: one slug per entry (the model, else the agent)"
+assert_eq "$(chief_agent_review_plan parallel | paste -sd' ' -)" "1 copilot 2 sonnet 3 sonnet" "all: one slug per entry (the model, else the agent)"
 assert_eq "$(CHIEF_AGENT_PICK=2 pick reviewer)" "claude:sonnet|" "all: CHIEF_AGENT_PICK picks that entry"
 chief_agent_select reviewer; assert_eq "$SEL_AGENT" "copilot" "all: the first entry without a pick"
 CHIEF_AGENT_PICK=3 chief_agent_select reviewer; assert_eq "$SEL_ARGS" "--verbose" "all: a pick carries the entry's args"
 assert_contains "$(CHIEF_AGENT_PICK=9 chief_agent_select reviewer 2>&1)" "no pool entry 9" "all: a pick past the pool errors"
 chief_agent_select reviewer peek; assert_eq "$(chief_agent_describe)" "all pool: copilot, claude:sonnet, claude:sonnet" "peek: an all pool is listed"
-assert_eq "$(chief_agent_fanout builder)" "" "all: other roles run a single worker"
+cfg <<'EOF2'
+[reviewer]
+strategy = round-robin
+copilot
+claude:sonnet
+EOF2
+assert_eq "$(CHIEF_AGENT_PICK=2 pick reviewer)" "claude:sonnet|" "pick: CHIEF_AGENT_PICK picks that entry under any strategy"
 cfg <<'EOF2'
 [builder]
 strategy = all
