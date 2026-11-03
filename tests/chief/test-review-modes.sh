@@ -183,4 +183,36 @@ assert_eq "$(chief_meta_get m-7 reviewer)" "" "spawn failure: nothing is linked"
 assert_eq "$(chief_meta_get m-7 review_pending)" "" "spawn failure: pending is lifted"
 assert_eq "$(chief_meta_get m-7-rv-sonnet status)" "torn-down" "spawn failure: the started reviewer is discarded"
 
+# --- a second invocation during a sequential run is refused ---
+hold_all
+printf '[reviewer]\nmode = sequential\nclaude:sonnet\ncodex\n' > "$CFG"
+newb m-8
+"$RV" m-8 > "$WORK/m-8.out" 2>&1 &
+RVPID=$!
+wait_for has_meta m-8-rv-sonnet
+assert_eq "$(chief_meta_get m-8 review_sha)" "$(git -C "$CHIEF_HOME/worktrees/m-8" rev-parse HEAD)" "double run: the round is claimed up front"
+out=$("$RV" m-8 2>&1); rc=$?
+assert_eq "$rc" "1" "double run: the second invocation fails"
+assert_contains "$out" "already running" "double run: says why"
+finish m-8-rv-sonnet PASS
+wait_for has_meta m-8-rv-codex
+finish m-8-rv-codex PASS
+wait $RVPID
+assert_eq "$(ls -d "$TASKS"/m-8-rv-* | wc -l)" "2" "double run: no duplicate reviewer"
+assert_eq "$(chief_meta_get m-8 reviewer)" "m-8-rv-sonnet m-8-rv-codex" "double run: the links are intact"
+assert_file_missing "$STATE/.review-m-8.lock" "double run: the lock is released"
+
+# --- a report is archived under the round its reviewer reviewed ---
+hold_all
+printf '[reviewer]\nmode = sequential\nclaude:sonnet\ncodex\n' > "$CFG"
+newb m-9
+"$RV" m-9 --mode parallel --only codex >/dev/null 2>&1   # round 1: codex only
+echo "done: round 1 PASS @x" >> "$TASKS/m-9-rv-codex/status"; printf 'r1\n' > "$TASKS/m-9-rv-codex/report.md"
+bump() { ( cd "$CHIEF_HOME/worktrees/m-9" && echo "$1" > "$1.txt" && git add "$1.txt" && git -c user.email=t@t -c user.name=t commit -q -m "$1" )
+  echo "done: $(git -C "$CHIEF_HOME/worktrees/m-9" rev-parse --short HEAD) $1" >> "$TASKS/m-9/status"; }
+bump a; timeout 30 "$RV" m-9 --mode parallel --only sonnet >/dev/null 2>&1   # round 2: sonnet only
+bump b; timeout 30 "$RV" m-9 --mode parallel --only codex >/dev/null 2>&1    # round 3: codex returns
+assert_eq "$(cat "$TASKS/m-9-rv-codex/report.round-1.md")" "r1" "archive: the report goes under the round it reviewed"
+assert_file_missing "$TASKS/m-9-rv-codex/report.round-2.md" "archive: not under the previous builder round"
+
 harness_summary

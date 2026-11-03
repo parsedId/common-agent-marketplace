@@ -17,6 +17,7 @@ set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/paths.sh"
 . "$CHIEF_ROOT/bin/lib/meta.sh"
 . "$CHIEF_ROOT/bin/lib/id.sh"
+. "$CHIEF_ROOT/bin/lib/lock.sh"
 . "$CHIEF_ROOT/bin/lib/agents/agent.sh"
 
 fail() { echo "chief-review: $*" >&2; exit 1; }
@@ -33,6 +34,11 @@ done
 [ -n "$BID" ] || fail "usage: chief-review.sh <builder-id> [--mode parallel|sequential|first] [--only <agent[:model],...>]"
 chief_meta_exists "$BID" || fail "no such task: $BID"
 [ "$(chief_meta_get "$BID" mode 2>/dev/null)" = builder ] || fail "$BID is not a builder"
+
+# One coordinator per builder; the lock lasts the whole run (a sequential one blocks).
+REVIEW_LOCK="$STATE/.review-$BID.lock"
+chief_lock_acquire "$REVIEW_LOCK" 0 || fail "a review of $BID is already running"
+trap 'chief_lock_release "$REVIEW_LOCK"' EXIT
 
 LAST=$(tail -n 1 "$(chief_task_path "$BID" status)" 2>/dev/null || true)
 [[ $LAST == done:* ]] || fail "$BID is not done (last status: ${LAST:-none})"
@@ -83,6 +89,7 @@ Builder brief (intent): $(chief_task_path "$BID" brief.md)
 Builder done line: ${LAST#done: }"
 
 PRIOR=$LINKED   # restored if a spawn fails
+PRIOR_ROUND=$(chief_meta_get "$BID" review_round 2>/dev/null || true) PRIOR_SHA=$(chief_meta_get "$BID" review_sha 2>/dev/null || true)
 ALL=$LINKED IDS="" STARTED="" STOP=""
 SEQ=0; [ "$MODE" = sequential ] && SEQ=1
 
@@ -110,6 +117,7 @@ spawn_rv() {  # <pick> <slug>
     --intent "Review $BID" --spec "$text"; then
     for started in $STARTED; do "$CHIEF_ROOT/bin/chief-teardown.sh" "$started" --abandon >/dev/null 2>&1 || true; done
     chief_meta_set "$BID" reviewer "$PRIOR"; chief_meta_set "$BID" review_ids ""
+    chief_meta_set "$BID" review_round "$PRIOR_ROUND"; chief_meta_set "$BID" review_sha "$PRIOR_SHA"
     fail "spawning reviewer $RID failed${STARTED:+; discarded ${STARTED// /, }}; nothing new is linked, retry the review"
   fi
   chief_meta_set "$RID" for "$BID"
@@ -121,9 +129,12 @@ spawn_rv() {  # <pick> <slug>
 }
 
 rearm_rv() {  # <reviewer-id>
-  local RID=$1 REPORT ARCHIVE_TO priors
+  local RID=$1 REPORT ARCHIVE_TO priors prev
   REPORT=$(chief_task_path "$RID" report.md)
-  ARCHIVE_TO="${REPORT%.md}.round-$((ROUND - 1)).md"
+  # The report belongs to the round this reviewer last reviewed (it may have sat out rounds).
+  prev=$(chief_meta_get "$RID" armed_round 2>/dev/null || true); prev=${prev%%@*}
+  [[ $prev =~ ^[0-9]+$ ]] && [ "$prev" -lt "$ROUND" ] || prev=$((ROUND - 1))
+  ARCHIVE_TO="${REPORT%.md}.round-$prev.md"
   # armed_round=<round>@<sha> marks a finished re-arm; archiving alone does not, so a retry redoes the
   # unfinished steps. A new commit restarts the round for every reviewer, so all review the same SHA.
   if [ "$(chief_meta_get "$RID" armed_round 2>/dev/null)" = "$ROUND@$SHA" ]; then
@@ -158,9 +169,12 @@ if [ "$PLAN" = "0 " ] && [ -n "$LINKED" ]; then   # no pool to pick from: re-arm
 fi
 
 if [ "$SEQ" = 1 ]; then
-  # The gate keeps the watcher quiet until the run ends; the trap lifts it on any exit.
-  trap 'chief_meta_set "$BID" review_pending ""' EXIT
+  # Claim the round up front so the same-SHA guard sees the run; the gate keeps the watcher
+  # quiet until it ends and the trap lifts it on any exit.
+  trap 'chief_meta_set "$BID" review_pending ""; chief_lock_release "$REVIEW_LOCK"' EXIT
   chief_meta_set "$BID" review_pending 1
+  chief_meta_set "$BID" review_round "$ROUND"
+  chief_meta_set "$BID" review_sha "$SHA"
 fi
 
 while read -r pick slug; do
